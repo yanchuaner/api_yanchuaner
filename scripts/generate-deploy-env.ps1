@@ -1,0 +1,56 @@
+param(
+  [string]$OutputPath = (Join-Path $PSScriptRoot "..\deploy\.env")
+)
+
+$ErrorActionPreference = "Stop"
+
+if (Test-Path -LiteralPath $OutputPath) {
+  throw "Refusing to overwrite existing file: $OutputPath"
+}
+
+function New-UrlSafeSecret([int]$ByteCount = 32) {
+  $bytes = New-Object byte[] $ByteCount
+  [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+$content = @"
+NEW_API_IMAGE_TAG=v1.0.0-rc.21-yc.1
+NEW_API_HOST_PORT=3101
+NEW_API_PUBLIC_URL=https://api.yanchuaner.cn
+NEW_API_SESSION_COOKIE_SECURE=true
+NEW_API_SESSION_COOKIE_TRUSTED_URL=https://api.yanchuaner.cn
+AI_CORE_NETWORK=yanchuaner-ai-core
+REDIS_HOST_PORT=6380
+
+CONTROL_DB_PASSWORD=$(New-UrlSafeSecret)
+GATEWAY_DB_PASSWORD=$(New-UrlSafeSecret)
+REDIS_PASSWORD=$(New-UrlSafeSecret)
+
+NEW_API_SESSION_SECRET=$(New-UrlSafeSecret 48)
+NEW_API_CRYPTO_SECRET=$(New-UrlSafeSecret 48)
+
+NEW_API_ROOT_USERNAME=yanchuaner
+NEW_API_ROOT_PASSWORD=$(New-UrlSafeSecret 36)
+
+YANCHUANER_OAUTH_CLIENT_ID=api-yanchuaner
+YANCHUANER_OAUTH_CLIENT_SECRET=$(New-UrlSafeSecret 48)
+YANCHUANER_AI_OAUTH_CLIENT_ID=ai-yanchuaner
+YANCHUANER_AI_OAUTH_CLIENT_SECRET=$(New-UrlSafeSecret 48)
+WEB_MAIN_PUBLIC_URL=https://yanchuaner.cn
+WEB_MAIN_INTERNAL_URL=https://yanchuaner.cn
+
+LITELLM_PUBLIC_URL=http://127.0.0.1:4000
+LITELLM_INTERNAL_URL=http://litellm-gateway:4000
+
+LITELLM_MASTER_KEY=sk-$(New-UrlSafeSecret 36)
+LITELLM_SALT_KEY=sk-$(New-UrlSafeSecret 36)
+LITELLM_UI_USERNAME=yanchuaner
+LITELLM_UI_PASSWORD=$(New-UrlSafeSecret 36)
+LITELLM_NEW_API_KEY=
+"@
+
+$directory = Split-Path -Parent $OutputPath
+New-Item -ItemType Directory -Force -Path $directory | Out-Null
+[System.IO.File]::WriteAllText($OutputPath, $content, [System.Text.UTF8Encoding]::new($false))
+Write-Host "Created $OutputPath. Keep this file out of Git and back it up securely."
