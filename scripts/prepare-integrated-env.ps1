@@ -80,6 +80,10 @@ $oauthSigningKey = $webValues["YANCHUANER_OAUTH_SIGNING_KEY"]
 if ([string]::IsNullOrWhiteSpace($oauthSigningKey)) { $oauthSigningKey = New-RsaPrivateKeyBase64 }
 $rootPassword = $apiValues["NEW_API_ROOT_PASSWORD"]
 if ([string]::IsNullOrWhiteSpace($rootPassword)) { $rootPassword = New-UrlSafeSecret 36 }
+$newUserInitialQuota = $apiValues["NEW_USER_INITIAL_QUOTA"]
+if ([string]::IsNullOrWhiteSpace($newUserInitialQuota)) { $newUserInitialQuota = "1000000" }
+$openWebUiServiceQuota = $apiValues["OPENWEBUI_SERVICE_QUOTA"]
+if ([string]::IsNullOrWhiteSpace($openWebUiServiceQuota)) { $openWebUiServiceQuota = "10000000" }
 
 Set-DotEnvValues $apiEnv @{
   NEW_API_PUBLIC_URL = "http://localhost:3101"
@@ -87,6 +91,8 @@ Set-DotEnvValues $apiEnv @{
   NEW_API_SESSION_COOKIE_TRUSTED_URL = ""
   NEW_API_ROOT_USERNAME = "yanchuaner"
   NEW_API_ROOT_PASSWORD = $rootPassword
+  NEW_USER_INITIAL_QUOTA = $newUserInitialQuota
+  OPENWEBUI_SERVICE_QUOTA = $openWebUiServiceQuota
   YANCHUANER_OAUTH_CLIENT_ID = "api-yanchuaner"
   YANCHUANER_OAUTH_CLIENT_SECRET = $oauthSecret
   YANCHUANER_AI_OAUTH_CLIENT_ID = "ai-yanchuaner"

@@ -21,12 +21,12 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 ## 首次初始化顺序
 
 1. 在本机隧道中完成 New API root 初始化。
-2. 将系统名称设为“燕中 API”并使用新版前端；保持总注册开关开启（自定义 OAuth 首次建号需要），但关闭密码注册及除“燕中校友”外的登录提供商；把新用户、邀请人与受邀人默认额度全部设为零。
+2. 将系统名称设为“燕中 API”并使用新版前端；保持总注册开关开启（自定义 OAuth 首次建号需要），但关闭密码注册及除“燕中校友”外的登录提供商。认证校友获得 `NEW_USER_INITIAL_QUOTA` 的有限内测额度，邀请人与受邀人额外额度保持为零。
 3. 在 LiteLLM 添加 OpenAI Platform API Project 与 DeepSeek 官方 API 渠道。
 4. 创建仅允许已批准模型、带总预算和 RPM/TPM 限制的 LiteLLM 虚拟 Key。
 5. 在 New API 新建一个自定义渠道，Base URL 使用 `http://litellm-gateway:4000`，Key 使用上一步的虚拟 Key，绝不使用 LiteLLM master key。
 6. 在 New API 配置主站 OAuth，并为 Open WebUI 配置独立 OIDC 客户端：授权、Token、用户信息端点和访问策略见 `docs/yanchuaner/architecture.md`。
-7. 创建公益额度分组，只开放明确批准的模型；先使用测试用户完成预扣、结算、失败退款和并发请求对账。
+7. Open WebUI 共享服务 Token 使用 `OPENWEBUI_SERVICE_QUOTA` 有限总预算，脚本只会把旧的无限 Token 迁移一次，不会在每次重启时重置余额。创建公益额度分组后，使用测试用户完成预扣、结算、失败退款和并发请求对账。
 
 ## 默认关闭项
 

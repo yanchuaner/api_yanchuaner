@@ -72,6 +72,14 @@ function Invoke-NewApiJson(
 & (Join-Path $PSScriptRoot "prepare-integrated-env.ps1") -WebRepo $WebRepo -AiRepo $AiRepo
 $apiEnv = Read-DotEnv $apiEnvPath
 $aiEnv = Read-DotEnv $aiEnvPath
+$newUserInitialQuota = 0
+$openWebUiServiceQuota = 0
+if (-not [int]::TryParse($apiEnv["NEW_USER_INITIAL_QUOTA"], [ref]$newUserInitialQuota) -or $newUserInitialQuota -le 0) {
+  throw "NEW_USER_INITIAL_QUOTA must be a positive integer"
+}
+if (-not [int]::TryParse($apiEnv["OPENWEBUI_SERVICE_QUOTA"], [ref]$openWebUiServiceQuota) -or $openWebUiServiceQuota -le 0) {
+  throw "OPENWEBUI_SERVICE_QUOTA must be a positive integer"
+}
 
 docker compose --project-directory $AiRepo -f $aiCompose up -d db litellm
 if ($LASTEXITCODE -ne 0) { throw "Unable to start LiteLLM data plane" }
@@ -110,7 +118,7 @@ $lockedOptions = [ordered]@{
   LinuxDOOAuthEnabled = $false
   TelegramOAuthEnabled = $false
   WeChatAuthEnabled = $false
-  QuotaForNewUser = 0
+  QuotaForNewUser = $newUserInitialQuota
   QuotaForInviter = 0
   QuotaForInvitee = 0
   SelfUseModeEnabled = $false
@@ -229,8 +237,8 @@ if (-not $serviceToken) {
   $tokenResult = Invoke-NewApiJson "POST" "/api/token/" @{
     name = "open-webui-service"
     expired_time = -1
-    unlimited_quota = $true
-    remain_quota = 0
+    unlimited_quota = $false
+    remain_quota = $openWebUiServiceQuota
     model_limits_enabled = $true
     model_limits = ($publicModels -join ",")
     group = "default"
@@ -238,6 +246,20 @@ if (-not $serviceToken) {
   if (-not $tokenResult.success) { throw "Failed to create Open WebUI service token: $($tokenResult.message)" }
   $tokens = Invoke-NewApiJson "GET" "/api/token/?p=1&page_size=100" $null $session
   $serviceToken = @($tokens.data.items) | Where-Object { $_.name -eq "open-webui-service" } | Select-Object -First 1
+} elseif ($serviceToken.unlimited_quota) {
+  $tokenResult = Invoke-NewApiJson "PUT" "/api/token/" @{
+    id = $serviceToken.id
+    name = $serviceToken.name
+    expired_time = $serviceToken.expired_time
+    unlimited_quota = $false
+    remain_quota = $openWebUiServiceQuota
+    model_limits_enabled = $true
+    model_limits = ($publicModels -join ",")
+    group = "default"
+    allow_ips = ""
+    cross_group_retry = $false
+  } $session
+  if (-not $tokenResult.success) { throw "Failed to cap the Open WebUI service token: $($tokenResult.message)" }
 }
 $tokenKey = Invoke-NewApiJson "POST" "/api/token/$($serviceToken.id)/key" @{} $session
 $openWebUiKey = "sk-$($tokenKey.data.key)"

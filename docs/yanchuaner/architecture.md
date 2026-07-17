@@ -43,7 +43,7 @@ New API 是用户余额和扣费的唯一账本。LiteLLM 的费用数据只用�
 
 浏览器授权端点使用主站公开地址；Docker 中的 New API 和 Open WebUI 必须通过容器可达的主站内部地址兑换令牌和读取用户信息。开发环境使用 `host.docker.internal:3000`，生产环境应统一使用受 TLS 保护的正式域名。New API 与 Open WebUI 使用不同客户端密钥，任一密钥泄露都可以单独轮换。主站 OIDC ID Token 使用持久化 RSA 私钥进行 RS256 签名，发现文档的 JWKS 只发布公钥；不得在重启时临时生成新密钥。
 
-New API 中建议配置字段映射：用户 ID `sub`、用户名 `preferred_username`、显示名 `name`、邮箱 `email`。New API 仍需把 OAuth 新用户的默认额度设为零，再由公益额度策略显式发放。
+New API 中配置字段映射：用户 ID `sub`、用户名 `preferred_username`、显示名 `name`、邮箱 `email`。内测阶段由 `NEW_USER_INITIAL_QUOTA` 发放一笔有限初始公益额度；正式上线前必须按实际资金预算复核。Open WebUI 使用独立的有限共享 Token，不能设置无限额度，也不能在部署重启时自动补满。
 
 自定义 OAuth 访问策略应再校验主站返回的角色：
 
