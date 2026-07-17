@@ -1,0 +1,162 @@
+name: api-yanchuaner
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-postgres-healthcheck: &postgres-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 12
+  start_period: 10s
+
+services:
+  control-db:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: new_api
+      POSTGRES_USER: new_api
+      POSTGRES_PASSWORD: ${CONTROL_DB_PASSWORD:?CONTROL_DB_PASSWORD is required}
+    volumes:
+      - control_db_data:/var/lib/postgresql/data
+    networks:
+      - data
+    logging: *default-logging
+    healthcheck:
+      <<: *postgres-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U new_api -d new_api"]
+
+  gateway-db:
+    profiles: ["standalone"]
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${GATEWAY_DB_PASSWORD:?GATEWAY_DB_PASSWORD is required}
+    volumes:
+      - gateway_db_data:/var/lib/postgresql/data
+    networks:
+      - data
+    logging: *default-logging
+    healthcheck:
+      <<: *postgres-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+
+  redis:
+    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
+    networks:
+      - edge
+      - data
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  litellm:
+    profiles: ["standalone"]
+    image: ghcr.io/berriai/litellm-database@sha256:64d3547e0b131bf4638342e52c12bc46d6f1d9b8498e4b731ff31be5ab316ea9
+    restart: unless-stopped
+    command: ["--config=/app/config.yaml", "--port=4000"]
+    environment:
+      DATABASE_URL: postgresql://litellm:${GATEWAY_DB_PASSWORD}@gateway-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY is required}
+      UI_USERNAME: ${LITELLM_UI_USERNAME:-yanchuaner}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD:?LITELLM_UI_PASSWORD is required}
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:4100:4000"
+    networks:
+      - edge
+      - data
+      - ai-core
+    logging: *default-logging
+    depends_on:
+      gateway-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  new-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: api-yanchuaner/new-api:${NEW_API_IMAGE_TAG:-v1.0.0-rc.21-yc.1}
+    restart: unless-stopped
+    command: ["--log-dir", "/app/logs"]
+    environment:
+      SQL_DSN: postgresql://new_api:${CONTROL_DB_PASSWORD}@control-db:5432/new_api
+      REDIS_CONN_STRING: redis://:${REDIS_PASSWORD}@redis:6379/0
+      SESSION_SECRET: ${NEW_API_SESSION_SECRET:?NEW_API_SESSION_SECRET is required}
+      CRYPTO_SECRET: ${NEW_API_CRYPTO_SECRET:?NEW_API_CRYPTO_SECRET is required}
+      SESSION_COOKIE_SECURE: ${NEW_API_SESSION_COOKIE_SECURE:-true}
+      SESSION_COOKIE_TRUSTED_URL: ${NEW_API_SESSION_COOKIE_TRUSTED_URL:-}
+      FRONTEND_BASE_URL: ${NEW_API_PUBLIC_URL}
+      GLOBAL_API_RATE_LIMIT_ENABLE: "true"
+      GLOBAL_API_RATE_LIMIT: "180"
+      GLOBAL_API_RATE_LIMIT_DURATION: "60"
+      ERROR_LOG_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "true"
+      NODE_NAME: api-yanchuaner-control-1
+      TZ: Asia/Shanghai
+    volumes:
+      - new_api_logs:/app/logs
+    ports:
+      - "127.0.0.1:${NEW_API_HOST_PORT:-3101}:3000"
+    networks:
+      edge:
+      data:
+      ai-core:
+        aliases:
+          - api-gateway
+    logging: *default-logging
+    depends_on:
+      control-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -q '\"success\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  control_db_data:
+  gateway_db_data:
+  redis_data:
+  new_api_logs:
+
+networks:
+  edge:
+  data:
+    internal: true
+  ai-core:
+    name: ${AI_CORE_NETWORK:-yanchuaner-ai-core}
+    external: true
