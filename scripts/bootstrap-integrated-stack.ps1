@@ -63,9 +63,14 @@ function Invoke-NewApiJson(
   }
   if ($null -ne $Body) { $params.Body = ($Body | ConvertTo-Json -Depth 12 -Compress) }
   if ($null -ne $Session) { $params.WebSession = $Session }
-  if (-not [string]::IsNullOrWhiteSpace($script:newApiUserId)) {
-    $params.Headers = @{ "New-Api-User" = $script:newApiUserId }
+  $headers = @{}
+  if (-not [string]::IsNullOrWhiteSpace($script:newApiAccessToken)) {
+    $headers["Authorization"] = "Bearer $($script:newApiAccessToken)"
   }
+  if (-not [string]::IsNullOrWhiteSpace($script:newApiUserId)) {
+    $headers["New-Api-User"] = $script:newApiUserId
+  }
+  if ($headers.Count -gt 0) { $params.Headers = $headers }
   return Invoke-RestMethod @params
 }
 
@@ -102,23 +107,44 @@ if (-not $setup.data.status) {
 }
 
 $session = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
-$login = Invoke-NewApiJson "POST" "/api/user/login" @{
-  username = $apiEnv["NEW_API_ROOT_USERNAME"]
-  password = $apiEnv["NEW_API_ROOT_PASSWORD"]
-} $session
-if (-not $login.success) { throw "New API root login failed" }
-$script:newApiUserId = [string]$login.data.id
+$script:newApiUserId = $apiEnv["NEW_API_ROOT_USER_ID"]
+$script:newApiAccessToken = $apiEnv["NEW_API_ROOT_ACCESS_TOKEN"]
+if (-not [string]::IsNullOrWhiteSpace($script:newApiUserId) -and -not [string]::IsNullOrWhiteSpace($script:newApiAccessToken)) {
+  $self = Invoke-NewApiJson "GET" "/api/user/self"
+  if (-not $self.success) { throw "Stored New API bootstrap access token is invalid" }
+} else {
+  $script:newApiUserId = $null
+  $script:newApiAccessToken = $null
+  $login = Invoke-NewApiJson "POST" "/api/user/login" @{
+    username = $apiEnv["NEW_API_ROOT_USERNAME"]
+    password = $apiEnv["NEW_API_ROOT_PASSWORD"]
+  } $session
+  if (-not $login.success) { throw "New API root login failed and no bootstrap access token is configured" }
+  $script:newApiUserId = [string]$login.data.id
+  $tokenResult = Invoke-NewApiJson "GET" "/api/user/token" $null $session
+  if (-not $tokenResult.success) { throw "Unable to create New API bootstrap access token" }
+  $script:newApiAccessToken = [string]$tokenResult.data
+  Set-DotEnvValues $apiEnvPath @{
+    NEW_API_ROOT_USER_ID = $script:newApiUserId
+    NEW_API_ROOT_ACCESS_TOKEN = $script:newApiAccessToken
+  }
+}
 
 $lockedOptions = [ordered]@{
   SystemName = "燕中 API"
   "theme.frontend" = "default"
   RegisterEnabled = $true
+  PasswordLoginEnabled = $false
   PasswordRegisterEnabled = $false
   GitHubOAuthEnabled = $false
   LinuxDOOAuthEnabled = $false
   TelegramOAuthEnabled = $false
   WeChatAuthEnabled = $false
   QuotaForNewUser = $newUserInitialQuota
+  USDExchangeRate = 7
+  "general_setting.quota_display_type" = "USD"
+  "general_setting.docs_link" = ""
+  HeaderNavModules = '{"home":true,"console":true,"pricing":{"enabled":false,"requireAuth":false},"rankings":{"enabled":false,"requireAuth":false},"docs":true,"about":false}'
   QuotaForInviter = 0
   QuotaForInvitee = 0
   SelfUseModeEnabled = $false
@@ -133,7 +159,7 @@ foreach ($entry in $lockedOptions.GetEnumerator()) {
 $providers = Invoke-NewApiJson "GET" "/api/custom-oauth-provider/" $null $session
 $oauthProvider = @($providers.data) | Where-Object { $_.slug -eq "yanchuaner" } | Select-Object -First 1
 $oauthPayload = @{
-  name = "燕中校友"
+  name = "燕中统一身份"
   slug = "yanchuaner"
   icon = "school"
   enabled = $true
@@ -149,8 +175,8 @@ $oauthPayload = @{
   email_field = "email"
   well_known = ""
   auth_style = 1
-  access_policy = '{"logic":"and","conditions":[{"field":"role","op":"in","value":["alumni","admin"]}]}'
-  access_denied_message = "仅限已完成身份认证的燕中校友使用。"
+  access_policy = '{"logic":"and","conditions":[{"field":"role","op":"in","value":["alumni","student","teacher","admin"]}]}'
+  access_denied_message = "仅限已完成身份认证的燕中在校生、校友与教师使用。"
 }
 if ($oauthProvider) {
   $oauthResult = Invoke-NewApiJson "PUT" "/api/custom-oauth-provider/$($oauthProvider.id)" $oauthPayload $session

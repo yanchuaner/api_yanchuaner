@@ -20,8 +20,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 
 ## 首次初始化顺序
 
-1. 在本机隧道中完成 New API root 初始化。
-2. 将系统名称设为“燕中 API”并使用新版前端；保持总注册开关开启（自定义 OAuth 首次建号需要），但关闭密码注册及除“燕中校友”外的登录提供商。认证校友获得 `NEW_USER_INITIAL_QUOTA` 的有限内测额度，邀请人与受邀人额外额度保持为零。
+1. 在本机隧道中完成 New API root 初始化。引导脚本会生成 `NEW_API_ROOT_USER_ID` 与 `NEW_API_ROOT_ACCESS_TOKEN` 并仅写入忽略提交的 `deploy/.env`，供关闭密码登录后的重复部署使用。
+2. 将系统名称设为“燕中 API”并使用极简前端；保持总注册开关开启（主站 OAuth 首次建号需要），但关闭密码登录、密码注册及除“燕中统一身份”外的登录提供商。已认证在校生、校友与教师首期获得 `$1.00 / ¥7.00`，邀请人与受邀人额外额度保持为零。
 3. 在 LiteLLM 添加 OpenAI Platform API Project 与 DeepSeek 官方 API 渠道。
 4. 创建仅允许已批准模型、带总预算和 RPM/TPM 限制的 LiteLLM 虚拟 Key。
 5. 在 New API 新建一个自定义渠道，Base URL 使用 `http://litellm-gateway:4000`，Key 使用上一步的虚拟 Key，绝不使用 LiteLLM master key。
@@ -30,7 +30,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 
 ## 默认关闭项
 
-以下能力在完成专项验收前不得启用：密码注册、匿名调用、在线充值、支付回调、邀请返利、兑换码、任意 Base URL、用户 BYOK、自动从公益额度切换到用户凭据。总注册开关是 OAuth 自动建号的必要条件，不等同于开放密码注册。
+以下能力在完成专项验收前不得启用：密码登录、密码注册、匿名调用、在线充值、支付回调、邀请返利、兑换码、任意 Base URL、用户 BYOK、自动从公益额度切换到用户凭据。总注册开关是 OAuth 自动建号的必要条件，不等同于开放本地账号体系。
 
 ## 停止与备份
 

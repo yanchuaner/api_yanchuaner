@@ -77,6 +77,14 @@ export function formatQuota(quota: number): string {
   })
 }
 
+/** Format stored quota units as the fixed USD/CNY pair used by Yanchuan API. */
+export function formatQuotaDualCurrency(quota: number): string {
+  const { config } = getCurrencyDisplay()
+  const amountUSD = quota / config.quotaPerUnit
+  const amountCNY = amountUSD * config.usdExchangeRate
+  return `$${amountUSD.toFixed(2)} / ¥${amountCNY.toFixed(2)}`
+}
+
 /**
  * Parse quota from the current display input back to quota units.
  */

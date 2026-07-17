@@ -81,7 +81,7 @@ if ([string]::IsNullOrWhiteSpace($oauthSigningKey)) { $oauthSigningKey = New-Rsa
 $rootPassword = $apiValues["NEW_API_ROOT_PASSWORD"]
 if ([string]::IsNullOrWhiteSpace($rootPassword)) { $rootPassword = New-UrlSafeSecret 36 }
 $newUserInitialQuota = $apiValues["NEW_USER_INITIAL_QUOTA"]
-if ([string]::IsNullOrWhiteSpace($newUserInitialQuota)) { $newUserInitialQuota = "1000000" }
+if ([string]::IsNullOrWhiteSpace($newUserInitialQuota)) { $newUserInitialQuota = "500000" }
 $openWebUiServiceQuota = $apiValues["OPENWEBUI_SERVICE_QUOTA"]
 if ([string]::IsNullOrWhiteSpace($openWebUiServiceQuota)) { $openWebUiServiceQuota = "10000000" }
 

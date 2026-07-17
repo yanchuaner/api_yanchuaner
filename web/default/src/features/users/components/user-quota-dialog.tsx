@@ -25,7 +25,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import {
+  formatQuotaDualCurrency,
+  parseQuotaFromDollars,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
@@ -39,17 +42,24 @@ interface UserQuotaDialogProps {
   onSuccess: () => void
 }
 
+const MODE_LABEL_KEYS: Record<QuotaAdjustMode, string> = {
+  add: 'Add',
+  subtract: 'Subtract',
+  override: 'Override',
+}
+
 export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
 
-  const amountValue = parseFloat(amount) || 0
+  const amountValue = Number.parseFloat(amount) || 0
   const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
 
   const getPreviewText = () => {
@@ -57,12 +67,12 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
     const val = quotaValue
     switch (mode) {
       case 'add':
-        return `${t('Current quota')}: ${formatQuota(current)}  +${formatQuota(val)} = ${formatQuota(current + val)}`
+        return `${t('Current quota')}: ${formatQuotaDualCurrency(current)}  +${formatQuotaDualCurrency(val)} = ${formatQuotaDualCurrency(current + val)}`
       case 'subtract':
-        return `${t('Current quota')}: ${formatQuota(current)}  -${formatQuota(val)} = ${formatQuota(current - val)}`
+        return `${t('Current quota')}: ${formatQuotaDualCurrency(current)}  -${formatQuotaDualCurrency(val)} = ${formatQuotaDualCurrency(current - val)}`
       case 'override': {
         const overrideQuota = parseQuotaFromDollars(amountValue)
-        return `${t('Current quota')}: ${formatQuota(current)} → ${formatQuota(overrideQuota)}`
+        return `${t('Current quota')}: ${formatQuotaDualCurrency(current)} → ${formatQuotaDualCurrency(overrideQuota)}`
       }
       default:
         return ''
@@ -72,6 +82,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const handleConfirm = async () => {
     if (!amount && mode !== 'override') return
     if (quotaValue <= 0 && mode !== 'override') return
+    if (!reason.trim()) return
 
     setLoading(true)
     try {
@@ -82,11 +93,13 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         action: 'add_quota',
         mode,
         value: mode === 'override' ? value : Math.abs(value),
+        reason: reason.trim(),
       })
       if (result.success) {
         toast.success(t('Quota adjusted successfully'))
         setAmount('')
         setMode('add')
+        setReason('')
         props.onOpenChange(false)
         props.onSuccess()
       } else {
@@ -102,6 +115,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const handleCancel = () => {
     setAmount('')
     setMode('add')
+    setReason('')
     props.onOpenChange(false)
   }
 
@@ -149,11 +163,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
                   setAmount('')
                 }}
               >
-                {m === 'add'
-                  ? t('Add')
-                  : m === 'subtract'
-                    ? t('Subtract')
-                    : t('Override')}
+                {t(MODE_LABEL_KEYS[m])}
               </Button>
             ))}
           </div>
@@ -174,6 +184,19 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
               if (e.key === 'Enter') handleConfirm()
             }}
           />
+        </div>
+
+        <div className='space-y-2'>
+          <Label>{t('Reason')}</Label>
+          <Input
+            maxLength={200}
+            placeholder={t('For example: summer beta allowance')}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <p className='text-muted-foreground text-xs'>
+            {t('The reason is stored in the administrator audit log.')}
+          </p>
         </div>
       </div>
     </Dialog>

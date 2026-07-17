@@ -205,6 +205,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 // findOrCreateOAuthUser finds existing user or creates new user
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session) (*model.User, error) {
 	user := &model.User{}
+	desiredRole, managesRole := trustedOAuthRole(provider, oauthUser)
 
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
@@ -215,6 +216,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		// Check if user has been deleted
 		if user.Id == 0 {
 			return nil, &OAuthUserDeletedError{}
+		}
+		if managesRole && user.Role != desiredRole {
+			if err := model.DB.Model(user).Update("role", desiredRole).Error; err != nil {
+				return nil, err
+			}
+			user.Role = desiredRole
+			_ = model.InvalidateUserCache(user.Id)
 		}
 		return user, nil
 	}
@@ -233,6 +241,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				if err := user.UpdateGitHubId(oauthUser.ProviderUserID); err != nil {
 					common.SysError(fmt.Sprintf("[OAuth] Failed to migrate user %d: %s", user.Id, err.Error()))
 					// Continue with login even if migration fails
+				}
+				if managesRole && user.Role != desiredRole {
+					if err := model.DB.Model(user).Update("role", desiredRole).Error; err != nil {
+						return nil, err
+					}
+					user.Role = desiredRole
+					_ = model.InvalidateUserCache(user.Id)
 				}
 				return user, nil
 			}
@@ -273,6 +288,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 	}
 	user.Role = common.RoleCommonUser
+	if managesRole {
+		user.Role = desiredRole
+	}
 	user.Status = common.UserStatusEnabled
 
 	// Handle affiliate code
@@ -341,6 +359,23 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	return user, nil
+}
+
+func trustedOAuthRole(provider oauth.Provider, oauthUser *oauth.OAuthUser) (int, bool) {
+	genericProvider, ok := provider.(*oauth.GenericOAuthProvider)
+	if !ok || genericProvider.GetConfig().Slug != "yanchuaner" {
+		return common.RoleCommonUser, false
+	}
+
+	role, _ := oauthUser.Extra["role"].(string)
+	switch role {
+	case "admin":
+		return common.RoleRootUser, true
+	case "alumni", "student", "teacher":
+		return common.RoleCommonUser, true
+	default:
+		return common.RoleCommonUser, false
+	}
 }
 
 // Error types for OAuth
