@@ -34,6 +34,14 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
+func accessTokenFromAuthorization(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 7 && strings.EqualFold(value[:7], "Bearer ") {
+		return strings.TrimSpace(value[7:])
+	}
+	return value
+}
+
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
@@ -43,7 +51,7 @@ func authHelper(c *gin.Context, minRole int) {
 	useAccessToken := false
 	if username == nil {
 		// Check access token
-		accessToken := c.Request.Header.Get("Authorization")
+		accessToken := accessTokenFromAuthorization(c.Request.Header.Get("Authorization"))
 		if accessToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,

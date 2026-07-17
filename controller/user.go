@@ -1031,6 +1031,7 @@ type ManageRequest struct {
 	Action string `json:"action"`
 	Value  int    `json:"value"`
 	Mode   string `json:"mode"`
+	Reason string `json:"reason"`
 }
 
 // ManageUser Only admin user can do this
@@ -1103,6 +1104,11 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleCommonUser
 	case "add_quota":
+		reason := strings.TrimSpace(req.Reason)
+		if reason == "" || len([]rune(reason)) > 200 {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
 		switch req.Mode {
 		case "add":
 			if req.Value <= 0 {
@@ -1114,7 +1120,8 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota":  logger.LogQuota(req.Value),
+				"reason": reason,
 			})
 		case "subtract":
 			if req.Value <= 0 {
@@ -1126,7 +1133,8 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota":  logger.LogQuota(req.Value),
+				"reason": reason,
 			})
 		case "override":
 			oldQuota := user.Quota
@@ -1135,8 +1143,9 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
-				"from": logger.LogQuota(oldQuota),
-				"to":   logger.LogQuota(req.Value),
+				"from":   logger.LogQuota(oldQuota),
+				"to":     logger.LogQuota(req.Value),
+				"reason": reason,
 			})
 		default:
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)

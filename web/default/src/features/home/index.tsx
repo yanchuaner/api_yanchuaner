@@ -16,118 +16,93 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef } from 'react'
+import { Link } from '@tanstack/react-router'
+import { ArrowRight, BadgeDollarSign, KeyRound, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
-import { Footer } from '@/components/layout/components/footer'
-import { RichContent } from '@/components/rich-content'
-import { useTheme } from '@/context/theme-provider'
-import { isLikelyHtml } from '@/lib/content-format'
+import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { CTA, Features, Hero, HowItWorks, Stats } from './components'
-import { useHomePageContent } from './hooks'
+const CAPABILITIES = [
+  { title: 'One key for supported models', icon: KeyRound },
+  { title: 'Clear USD and CNY accounting', icon: BadgeDollarSign },
+  { title: 'Works with apps and agents', icon: Route },
+] as const
 
 export function Home() {
-  const { i18n, t } = useTranslation()
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const { resolvedTheme } = useTheme()
-  const { auth } = useAuthStore()
-  const isAuthenticated = !!auth.user
-  const { content, isLoaded, isUrl } = useHomePageContent()
-
-  const syncIframePreferences = useCallback(() => {
-    try {
-      iframeRef.current?.contentWindow?.postMessage(
-        { themeMode: resolvedTheme },
-        '*'
-      )
-      iframeRef.current?.contentWindow?.postMessage(
-        { lang: i18n.language },
-        '*'
-      )
-    } catch {
-      // Cross-origin frames may reject access while navigating.
-    }
-  }, [i18n.language, resolvedTheme])
-
-  useEffect(() => {
-    if (isUrl) {
-      syncIframePreferences()
-    }
-  }, [isUrl, syncIframePreferences])
-
-  if (!isLoaded) {
-    return (
-      <PublicLayout showMainContainer={false}>
-        <main className='flex min-h-screen items-center justify-center'>
-          <div className='text-muted-foreground'>{t('Loading...')}</div>
-        </main>
-      </PublicLayout>
-    )
-  }
-
-  if (content) {
-    if (isUrl) {
-      return (
-        <PublicLayout showMainContainer={false}>
-          {/*
-            allow-top-navigation-by-user-activation: the custom home page URL is
-            admin-configured (trusted); this lets its target="_top" nav/menu links
-            navigate the top-level window on user click. The default sandbox blocks
-            this on desktop, while some mobile browsers allow it via allow-popups,
-            causing inconsistent behavior. This token only permits user-activated
-            top-level navigation and does NOT grant same-origin access.
-          */}
-          <iframe
-            ref={iframeRef}
-            src={content}
-            className='h-screen w-full border-none'
-            title={t('Custom Home Page')}
-            sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
-            onLoad={syncIframePreferences}
-          />
-        </PublicLayout>
-      )
-    }
-
-    const contentIsHtml = isLikelyHtml(content)
-
-    if (contentIsHtml) {
-      return (
-        <PublicLayout showMainContainer={false}>
-          <RichContent
-            mode='html'
-            htmlVariant='isolated'
-            content={content}
-            className='custom-home-content'
-          />
-        </PublicLayout>
-      )
-    }
-
-    return (
-      <PublicLayout>
-        <div className='mx-auto max-w-6xl px-4 py-8'>
-          <RichContent
-            mode='markdown'
-            content={content}
-            className='custom-home-content'
-          />
-        </div>
-      </PublicLayout>
-    )
-  }
+  const { t } = useTranslation()
+  const isAuthenticated = useAuthStore((state) => Boolean(state.auth.user))
 
   return (
     <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
+      <main className='border-border/70 flex min-h-svh flex-col border-b pt-16'>
+        <section className='mx-auto flex w-full max-w-6xl flex-1 items-center px-5 py-16 sm:px-8 sm:py-20 lg:px-10'>
+          <div className='grid w-full items-end gap-12 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)] lg:gap-20'>
+            <div className='max-w-3xl'>
+              <p className='text-primary mb-5 text-sm font-semibold'>
+                {t('For verified Yanchuan students, alumni, and teachers')}
+              </p>
+              <h1 className='text-foreground text-4xl font-semibold sm:text-5xl lg:text-6xl'>
+                {t('Yanchuan API')}
+              </h1>
+              <p className='text-muted-foreground mt-6 max-w-2xl text-base leading-8 sm:text-lg'>
+                {t(
+                  'A simple, shared AI gateway maintained for the Yanchuan community. Start with a public-interest allowance, bring your own provider when needed, and keep one API key across your tools.'
+                )}
+              </p>
+              <div className='mt-9 flex flex-wrap gap-3'>
+                <Button
+                  size='lg'
+                  render={
+                    <Link
+                      to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                    />
+                  }
+                >
+                  {isAuthenticated ? t('Open console') : t('Sign in with main site')}
+                  <ArrowRight data-icon='inline-end' />
+                </Button>
+                <Button size='lg' variant='outline' render={<Link to='/docs' />}>
+                  {t('Read the quick guide')}
+                </Button>
+              </div>
+            </div>
+
+            <div className='border-border divide-border border-y'>
+              {CAPABILITIES.map((capability) => {
+                const Icon = capability.icon
+                return (
+                  <div
+                    key={capability.title}
+                    className='flex min-h-16 items-center gap-4 border-b py-4 last:border-b-0'
+                  >
+                    <Icon className='text-primary size-5 shrink-0' />
+                    <span className='text-sm font-medium sm:text-base'>
+                      {t(capability.title)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className='bg-muted/35 border-border border-t'>
+          <div className='mx-auto grid max-w-6xl gap-4 px-5 py-6 text-sm sm:grid-cols-3 sm:px-8 lg:px-10'>
+            <p>
+              <span className='font-semibold'>$1.00</span>
+              <span className='text-muted-foreground'> = ¥7.00</span>
+            </p>
+            <p className='text-muted-foreground sm:text-center'>
+              {t('First-version allowance: $1.00 / ¥7.00')}
+            </p>
+            <p className='text-muted-foreground sm:text-right'>
+              {t('Usage and rates remain visible before every request')}
+            </p>
+          </div>
+        </section>
+      </main>
     </PublicLayout>
   )
 }
