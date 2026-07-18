@@ -5225,6 +5225,12 @@
     "Use the same verified account as yanchuaner.cn. No separate API account or password is required.": "请使用 yanchuaner.cn 已认证账号，无需另行注册或设置燕中 API 密码。",
     "For example: summer beta allowance": "例如：暑期内测福利",
     "The reason is stored in the administrator audit log.": "发放原因会写入管理员审计日志。",
+    "Save your new API key": "保存新的 API 密钥",
+    "This key is shown only once and cannot be retrieved later.": "此密钥仅显示一次，关闭后无法再次取回。",
+    "This key was shown only once when it was created.": "此密钥仅在创建时显示过一次。",
+    "One-time keys cannot be copied again.": "一次性显示的密钥无法再次复制。",
+    "Virtual keys require a finite budget": "虚拟密钥必须设置有限预算",
+    "Quota must be greater than zero": "额度必须大于零",
     "Zoom": "缩放"
   }
 }

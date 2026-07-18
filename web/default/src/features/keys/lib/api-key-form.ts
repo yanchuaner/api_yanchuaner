@@ -22,13 +22,16 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type ApiKeyFormData, type ApiKey } from '../types'
+import type { ApiKey, ApiKeyFormData } from '../types'
 
 // ============================================================================
 // Form Schema
 // ============================================================================
 
-export function getApiKeyFormSchema(t: TFunction) {
+export function getApiKeyFormSchema(
+  t: TFunction,
+  finiteBudgetRequired = false
+) {
   return z
     .object({
       name: z.string().min(1, t('Please enter a name')),
@@ -42,18 +45,31 @@ export function getApiKeyFormSchema(t: TFunction) {
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
+      if (finiteBudgetRequired && data.unlimited_quota) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['unlimited_quota'],
+          message: t('Virtual keys require a finite budget'),
+        })
+        return
+      }
+
       if (data.unlimited_quota) {
         return
       }
 
       if (
         data.remain_quota_dollars === undefined ||
-        data.remain_quota_dollars < 0
+        (finiteBudgetRequired
+          ? parseQuotaFromDollars(data.remain_quota_dollars) <= 0
+          : data.remain_quota_dollars < 0)
       ) {
         ctx.addIssue({
           code: 'custom',
           path: ['remain_quota_dollars'],
-          message: t('Quota must be zero or greater'),
+          message: finiteBudgetRequired
+            ? t('Quota must be greater than zero')
+            : t('Quota must be zero or greater'),
         })
       }
     })
@@ -78,12 +94,16 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
 }
 
 export function getApiKeyFormDefaultValues(
-  defaultUseAutoGroup: boolean
+  defaultUseAutoGroup: boolean,
+  finiteBudgetRequired = false
 ): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
     group: defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP,
     cross_group_retry: defaultUseAutoGroup,
+    unlimited_quota: finiteBudgetRequired
+      ? false
+      : API_KEY_FORM_DEFAULT_VALUES.unlimited_quota,
   }
 }
 

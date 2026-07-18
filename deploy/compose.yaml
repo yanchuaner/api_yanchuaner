@@ -122,6 +122,8 @@ services:
       GLOBAL_API_RATE_LIMIT_DURATION: "60"
       ERROR_LOG_ENABLED: "true"
       BATCH_UPDATE_ENABLED: "true"
+      YANCHUANER_HASHED_KEYS_ENABLED: ${YANCHUANER_HASHED_KEYS_ENABLED:-true}
+      YANCHUANER_QUOTA_LEDGER_ENABLED: ${YANCHUANER_QUOTA_LEDGER_ENABLED:-true}
       NODE_NAME: api-yanchuaner-control-1
       TZ: Asia/Shanghai
     volumes:

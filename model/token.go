@@ -15,6 +15,9 @@ type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	KeyHashEnabled     bool           `json:"key_hash_enabled"`
+	KeyDisplayPrefix   string         `json:"key_display_prefix" gorm:"type:varchar(32);default:''"`
+	KeyDisplaySuffix   string         `json:"key_display_suffix" gorm:"type:varchar(8);default:''"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
 	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
@@ -49,10 +52,19 @@ func MaskTokenKey(key string) string {
 }
 
 func (token *Token) GetFullKey() string {
+	if token.KeyHashEnabled {
+		return ""
+	}
 	return token.Key
 }
 
 func (token *Token) GetMaskedKey() string {
+	if token.KeyHashEnabled {
+		if token.KeyDisplayPrefix == "" || token.KeyDisplaySuffix == "" {
+			return "yc_**************"
+		}
+		return token.KeyDisplayPrefix + "**********" + token.KeyDisplaySuffix
+	}
 	return MaskTokenKey(token.Key)
 }
 
@@ -196,7 +208,7 @@ func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
 		return nil, ErrTokenNotProvided
 	}
-	token, err = GetTokenByKey(key, false)
+	token, err = GetTokenByPresentedKey(key, false)
 	if err == nil {
 		if token.Status == common.TokenStatusExhausted ||
 			token.Status == common.TokenStatusExpired ||

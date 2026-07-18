@@ -42,6 +42,11 @@ type tokenKeyResponse struct {
 	Key string `json:"key"`
 }
 
+type hashedTokenCreateResponse struct {
+	Key   string            `json:"key"`
+	Token tokenResponseItem `json:"token"`
+}
+
 type sqliteColumnInfo struct {
 	Name string `gorm:"column:name"`
 	Type string `gorm:"column:type"`
@@ -536,5 +541,135 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	}
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
+	}
+}
+
+func TestAddTokenStoresHashAndReturnsSecretOnlyAtCreation(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	t.Setenv("YANCHUANER_HASHED_KEYS_ENABLED", "true")
+
+	body := map[string]any{
+		"name":                 "agent-development",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      false,
+		"model_limits_enabled": true,
+		"model_limits":         "gpt-4.1,deepseek-chat",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 7)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected hashed token creation to succeed, got message: %s", response.Message)
+	}
+	var created hashedTokenCreateResponse
+	if err := common.Unmarshal(response.Data, &created); err != nil {
+		t.Fatalf("failed to decode hashed token creation response: %v", err)
+	}
+	if !strings.HasPrefix(created.Key, "sk-yc_") {
+		t.Fatalf("expected one-time virtual key, got %q", created.Key)
+	}
+
+	var stored model.Token
+	if err := db.First(&stored, created.Token.ID).Error; err != nil {
+		t.Fatalf("failed to load stored token: %v", err)
+	}
+	if !stored.KeyHashEnabled {
+		t.Fatalf("expected stored token to be marked as hashed")
+	}
+	if stored.Key == strings.TrimPrefix(created.Key, "sk-") || strings.Contains(stored.Key, created.Key) {
+		t.Fatalf("database stored the presented virtual key")
+	}
+	if stored.Key != model.HashVirtualKey(strings.TrimPrefix(created.Key, "sk-")) {
+		t.Fatalf("database did not store the expected virtual key hash")
+	}
+
+	keyCtx, keyRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/key", nil, 7)
+	keyCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(stored.Id)}}
+	GetTokenKey(keyCtx)
+	if keyRecorder.Code != http.StatusGone {
+		t.Fatalf("expected one-time key retrieval to return 410, got %d", keyRecorder.Code)
+	}
+	if strings.Contains(keyRecorder.Body.String(), created.Key) || strings.Contains(keyRecorder.Body.String(), stored.Key) {
+		t.Fatalf("key retrieval response leaked a credential or hash: %s", keyRecorder.Body.String())
+	}
+}
+
+func TestAddTokenRejectsUnlimitedOrEmptyHashedKeyBudget(t *testing.T) {
+	setupTokenControllerTestDB(t)
+	t.Setenv("YANCHUANER_HASHED_KEYS_ENABLED", "true")
+
+	for _, testCase := range []struct {
+		name      string
+		quota     int
+		unlimited bool
+	}{
+		{name: "unlimited", quota: 100, unlimited: true},
+		{name: "empty", quota: 0, unlimited: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{
+				"name":            "bounded-key",
+				"remain_quota":    testCase.quota,
+				"unlimited_quota": testCase.unlimited,
+			}, 7)
+			AddToken(ctx)
+
+			response := decodeAPIResponse(t, recorder)
+			if response.Success || recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected bounded budget rejection, got status %d and body %s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdateHashedTokenRejectsUnlimitedBudget(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	_, storedHash, prefix, suffix, err := model.GenerateVirtualKey()
+	if err != nil {
+		t.Fatalf("failed to generate virtual key: %v", err)
+	}
+	token := &model.Token{
+		UserId:           7,
+		Name:             "bounded-key",
+		Key:              storedHash,
+		KeyHashEnabled:   true,
+		KeyDisplayPrefix: prefix,
+		KeyDisplaySuffix: suffix,
+		Status:           common.TokenStatusEnabled,
+		CreatedTime:      1,
+		AccessedTime:     1,
+		ExpiredTime:      -1,
+		RemainQuota:      100,
+		UnlimitedQuota:   false,
+		Group:            "default",
+	}
+	if err := db.Create(token).Error; err != nil {
+		t.Fatalf("failed to create hashed token: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", map[string]any{
+		"id":              token.Id,
+		"name":            token.Name,
+		"expired_time":    -1,
+		"remain_quota":    100,
+		"unlimited_quota": true,
+		"group":           "default",
+	}, 7)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success || recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected unlimited budget rejection, got status %d and body %s", recorder.Code, recorder.Body.String())
+	}
+	var reloaded model.Token
+	if err := db.First(&reloaded, token.Id).Error; err != nil {
+		t.Fatalf("failed to reload hashed token: %v", err)
+	}
+	if reloaded.UnlimitedQuota || reloaded.RemainQuota != 100 {
+		t.Fatalf("rejected update changed stored budget: %+v", reloaded)
 	}
 }

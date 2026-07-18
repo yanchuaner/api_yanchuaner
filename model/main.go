@@ -272,6 +272,7 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&QuotaLedgerEntry{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -303,6 +304,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -326,6 +330,7 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&QuotaLedgerEntry{}, "QuotaLedgerEntry"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -374,6 +379,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
+		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

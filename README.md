@@ -22,10 +22,11 @@
 - 已认证在校生、校友与教师通过“燕中统一身份”登录。
 - 主站管理员同步为燕中 API 管理员；其他 OAuth 提供方不能通过角色字段提权。
 - 新成员首期公益额度为 `$1.00 / ¥7.00`。
-- 用户创建和撤销 API Key，查看模型范围、剩余额度与调用明细。
+- 用户按应用/场景创建和撤销虚拟 Key；新 Key 只展示一次，服务端只保存哈希与脱敏片段。
+- 公益额度的赠送、预扣、结算、退款和管理员调整写入不可变流水，余额字段只作兼容投影。
 - 管理员定向增减或覆盖额度时必须填写原因，并记录操作者、目标用户、金额与原因。
 - Open WebUI 通过受限服务 Key 调用燕中 API；未来 Agent 使用同一 `/v1` 接口。
-- LiteLLM 连接获授权的 OpenAI、DeepSeek 等上游，New API 是用户余额与扣费的唯一真值。
+- LiteLLM 连接获授权的 OpenAI、DeepSeek 等上游；燕中额度流水是已迁移公益额度路径的业务真值，New API 保留兼容网关和余额投影。
 
 ## 调用链
 
@@ -67,7 +68,7 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 - 燕中 AI：`http://localhost:3001`
 - LiteLLM 管理端：`http://localhost:4000/ui`
 
-详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [架构文档](docs/yanchuaner/architecture.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
+详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
 
 ## 安全边界
 
@@ -76,6 +77,11 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 - 上游真实密钥不写入 Git、普通日志、前端或用户渠道配置。
 - BYOK 仍属于后续专项，不在凭据保险库和审计完成前开放。
 - 自动化 root 管理令牌只保存在被 Git 忽略的本地 `deploy/.env`。
+- 旧明文 Token 必须通过“新建哈希 Key → 验证 → 撤销旧 Key”轮换，不能宣称已自动迁移。
+
+## 开源与来源
+
+本仓库是 New API 的 AGPLv3 修改分发，必须保留 `LICENSE`、`NOTICE`、版权头、界面署名和上游链接。燕中原创文件、授权修改、保留依赖与计划替换范围见 [版权与来源矩阵](docs/yanchuaner/copyright-matrix.md)，B 到 C 的验收与回滚见 [迁移清单](docs/yanchuaner/migration-b-to-c.md)。
 
 ## 路线图
 

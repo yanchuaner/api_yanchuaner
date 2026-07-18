@@ -56,21 +56,29 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
 
   const handlePopoverOpen = useCallback(
     (open: boolean) => {
+      if (apiKey.key_hash_enabled) return
       setPopoverOpen(open)
       if (open && !resolvedFullKey) {
         resolveRealKey(apiKey.id)
       }
     },
-    [resolvedFullKey, resolveRealKey, apiKey.id]
+    [resolvedFullKey, resolveRealKey, apiKey.id, apiKey.key_hash_enabled]
   )
 
   const handleCopy = useCallback(async () => {
+    if (apiKey.key_hash_enabled) return
     const realKey = resolvedFullKey || (await resolveRealKey(apiKey.id))
     if (!realKey) return
 
     const ok = await copyToClipboard(realKey)
     if (ok) markKeyCopied(apiKey.id)
-  }, [resolvedFullKey, resolveRealKey, apiKey.id, markKeyCopied])
+  }, [
+    apiKey.key_hash_enabled,
+    resolvedFullKey,
+    resolveRealKey,
+    apiKey.id,
+    markKeyCopied,
+  ])
 
   let copyIcon = <Copy className='size-3.5' />
   let copyTooltip = t('Copy API key')
@@ -80,6 +88,9 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
   } else if (isCopied) {
     copyIcon = <Check className='size-3.5 text-green-600' />
     copyTooltip = t('Copied!')
+  }
+  if (apiKey.key_hash_enabled) {
+    copyTooltip = t('This key was shown only once when it was created.')
   }
 
   return (
@@ -91,6 +102,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
               variant='ghost'
               size='sm'
               className='text-muted-foreground h-7 max-w-full min-w-0 justify-start truncate px-0 font-mono text-xs hover:bg-transparent aria-expanded:bg-transparent'
+              disabled={apiKey.key_hash_enabled}
             />
           }
         >
@@ -129,7 +141,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
               size='icon'
               className='size-7 shrink-0'
               onClick={handleCopy}
-              disabled={isLoading}
+              disabled={isLoading || apiKey.key_hash_enabled}
             />
           }
         >

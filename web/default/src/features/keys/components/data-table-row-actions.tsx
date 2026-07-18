@@ -100,19 +100,34 @@ export function DataTableRowActions<TData>({
 
   const handleMenuOpenChange = useCallback(
     (open: boolean) => {
-      if (open && !resolvedRealKey && !isRealKeyLoading) {
+      if (
+        open &&
+        !apiKey.key_hash_enabled &&
+        !resolvedRealKey &&
+        !isRealKeyLoading
+      ) {
         void resolveRealKey(apiKey.id)
       }
     },
-    [apiKey.id, isRealKeyLoading, resolvedRealKey, resolveRealKey]
+    [
+      apiKey.id,
+      apiKey.key_hash_enabled,
+      isRealKeyLoading,
+      resolvedRealKey,
+      resolveRealKey,
+    ]
   )
 
   const getCachedRealKey = useCallback(() => {
+    if (apiKey.key_hash_enabled) {
+      toast.info(t('This key was shown only once when it was created.'))
+      return null
+    }
     if (resolvedRealKey) return resolvedRealKey
     void resolveRealKey(apiKey.id)
     toast.info(t('API key is loading, please try again in a moment'))
     return null
-  }, [apiKey.id, resolvedRealKey, resolveRealKey, t])
+  }, [apiKey.id, apiKey.key_hash_enabled, resolvedRealKey, resolveRealKey, t])
 
   const handleOpenChatPreset = useCallback(
     async (preset: ChatPreset) => {
@@ -239,6 +254,7 @@ export function DataTableRowActions<TData>({
         onOpenChange={handleMenuOpenChange}
       >
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = getCachedRealKey()
             if (!realKey) return
@@ -252,6 +268,7 @@ export function DataTableRowActions<TData>({
           </DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = getCachedRealKey()
             if (!realKey) return
@@ -270,6 +287,7 @@ export function DataTableRowActions<TData>({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = await resolveRealKey(apiKey.id)
             if (!realKey) return
@@ -285,7 +303,9 @@ export function DataTableRowActions<TData>({
         </DropdownMenuItem>
         {hasChatPresets && (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger disabled={apiKey.key_hash_enabled}>
+              {t('Chat')}
+            </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {chatPresets.map((preset) => (
                 <DropdownMenuItem

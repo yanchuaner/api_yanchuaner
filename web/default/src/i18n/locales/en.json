@@ -5225,6 +5225,12 @@
     "Use the same verified account as yanchuaner.cn. No separate API account or password is required.": "Use the same verified account as yanchuaner.cn. No separate API account or password is required.",
     "For example: summer beta allowance": "For example: summer beta allowance",
     "The reason is stored in the administrator audit log.": "The reason is stored in the administrator audit log.",
+    "Save your new API key": "Save your new API key",
+    "This key is shown only once and cannot be retrieved later.": "This key is shown only once and cannot be retrieved later.",
+    "This key was shown only once when it was created.": "This key was shown only once when it was created.",
+    "One-time keys cannot be copied again.": "One-time keys cannot be copied again.",
+    "Virtual keys require a finite budget": "Virtual keys require a finite budget",
+    "Quota must be greater than zero": "Quota must be greater than zero",
     "Zoom": "Zoom"
   }
 }

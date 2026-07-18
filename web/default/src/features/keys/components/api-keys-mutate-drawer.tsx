@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
+import {
+  ChevronDown,
+  Copy,
+  KeyRound,
+  Settings2,
+  WalletCards,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -42,6 +48,14 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Form,
   FormControl,
   FormDescription,
@@ -64,6 +78,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
@@ -100,7 +115,13 @@ export function ApiKeysMutateDrawer({
   const { status } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [createdKeys, setCreatedKeys] = useState<string[]>([])
   const defaultUseAutoGroup = status?.default_use_auto_group === true
+  const hashedKeysEnabled =
+    status?.yanchuaner_hashed_keys_enabled === true ||
+    status?.data?.yanchuaner_hashed_keys_enabled === true
+  const finiteBudgetRequired =
+    hashedKeysEnabled && (!isUpdate || currentRow?.key_hash_enabled === true)
 
   // Fetch models
   const { data: modelsData } = useQuery({
@@ -129,11 +150,14 @@ export function ApiKeysMutateDrawer({
     })
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
-  const schema = getApiKeyFormSchema(t)
+  const schema = getApiKeyFormSchema(t, finiteBudgetRequired)
 
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
+    defaultValues: getApiKeyFormDefaultValues(
+      defaultUseAutoGroup,
+      finiteBudgetRequired
+    ),
   })
 
   // Load existing data when updating
@@ -146,10 +170,21 @@ export function ApiKeysMutateDrawer({
       })
     } else if (open && !isUpdate) {
       form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+        getApiKeyFormDefaultValues(
+          defaultUseAutoGroup && backendHasAuto,
+          finiteBudgetRequired
+        )
       )
     }
-  }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
+  }, [
+    open,
+    isUpdate,
+    currentRow,
+    form,
+    defaultUseAutoGroup,
+    backendHasAuto,
+    finiteBudgetRequired,
+  ])
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
@@ -188,6 +223,7 @@ export function ApiKeysMutateDrawer({
         // Create mode - handle batch creation
         const count = data.tokenCount || 1
         let successCount = 0
+        const oneTimeKeys: string[] = []
 
         for (let i = 0; i < count; i++) {
           const result = await createApiKey({
@@ -199,6 +235,7 @@ export function ApiKeysMutateDrawer({
           })
           if (result.success) {
             successCount++
+            if (result.data?.key) oneTimeKeys.push(result.data.key)
           } else {
             toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
             break
@@ -212,6 +249,7 @@ export function ApiKeysMutateDrawer({
             })
           )
           onOpenChange(false)
+          if (oneTimeKeys.length > 0) setCreatedKeys(oneTimeKeys)
           triggerRefresh()
         }
       }
@@ -444,7 +482,7 @@ export function ApiKeysMutateDrawer({
                 icon={<WalletCards className='size-4' />}
                 iconTone='success'
               />
-              {!unlimitedQuota && (
+              {(finiteBudgetRequired || !unlimitedQuota) && (
                 <FormField
                   control={form.control}
                   name='remain_quota_dollars'
@@ -477,28 +515,30 @@ export function ApiKeysMutateDrawer({
                 />
               )}
 
-              <FormField
-                control={form.control}
-                name='unlimited_quota'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-sm'>
-                        {t('Unlimited Quota')}
-                      </FormLabel>
-                      <FormDescription className='text-xs'>
-                        {t('Enable unlimited quota for this API key')}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
+              {!finiteBudgetRequired && (
+                <FormField
+                  control={form.control}
+                  name='unlimited_quota'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-sm'>
+                          {t('Unlimited Quota')}
+                        </FormLabel>
+                        <FormDescription className='text-xs'>
+                          {t('Enable unlimited quota for this API key')}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
             </SideDrawerSection>
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
@@ -602,6 +642,36 @@ export function ApiKeysMutateDrawer({
           </Button>
         </SheetFooter>
       </SheetContent>
+      <Dialog
+        open={createdKeys.length > 0}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setCreatedKeys([])
+        }}
+      >
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>{t('Save your new API key')}</DialogTitle>
+            <DialogDescription>
+              {t('This key is shown only once and cannot be retrieved later.')}
+            </DialogDescription>
+          </DialogHeader>
+          <pre className='bg-muted max-h-64 overflow-auto rounded-md border p-3 font-mono text-xs break-all whitespace-pre-wrap'>
+            {createdKeys.join('\n')}
+          </pre>
+          <DialogFooter>
+            <Button
+              type='button'
+              onClick={async () => {
+                const copied = await copyToClipboard(createdKeys.join('\n'))
+                if (copied) toast.success(t('Copied'))
+              }}
+            >
+              <Copy className='size-4' />
+              {t('Copy')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   )
 }

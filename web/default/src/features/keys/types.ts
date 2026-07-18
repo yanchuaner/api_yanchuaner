@@ -26,6 +26,9 @@ export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
   key: z.string(),
+  key_hash_enabled: z.boolean().optional().default(false),
+  key_display_prefix: z.string().optional().default(''),
+  key_display_suffix: z.string().optional().default(''),
   status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted
   remain_quota: z.number(),
   used_quota: z.number(),
@@ -57,6 +60,11 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T
+}
+
+export interface ApiKeyCreationData {
+  key?: string
+  token?: ApiKey
 }
 
 export interface GetApiKeysParams {

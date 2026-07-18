@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -1115,7 +1116,13 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			var err error
+			if model.QuotaLedgerEnabled() {
+				err = applyAdminQuotaLedgerChange(c, &user, req.Value, "add", reason)
+			} else {
+				err = model.IncreaseUserQuota(user.Id, req.Value, true)
+			}
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
@@ -1128,7 +1135,13 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			var err error
+			if model.QuotaLedgerEnabled() {
+				err = applyAdminQuotaLedgerChange(c, &user, -req.Value, "subtract", reason)
+			} else {
+				err = model.DecreaseUserQuota(user.Id, req.Value, true)
+			}
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
@@ -1137,8 +1150,21 @@ func ManageUser(c *gin.Context) {
 				"reason": reason,
 			})
 		case "override":
+			if req.Value < 0 || req.Value > math.MaxInt32 {
+				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+				return
+			}
 			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			var err error
+			if model.QuotaLedgerEnabled() {
+				delta := req.Value - oldQuota
+				if delta != 0 {
+					err = applyAdminQuotaLedgerChange(c, &user, delta, "override", reason)
+				}
+			} else {
+				err = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error
+			}
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
