@@ -1,7 +1,7 @@
 # 阶段 1：YanCore 主体凭证
 
 更新日期：2026-07-19
-状态：`IDENTITY_EXCHANGE_IMPLEMENTED`
+状态：`AI_WEB_SESSION_KEY_IMPLEMENTED`
 
 ## 目标
 
@@ -29,6 +29,8 @@
 - `POST /api/yancore/grants/introspect`：持有者以 `Authorization: Bearer <grant>` 请求校验主体、应用、受众、scope 和过期时间。
 - `POST /api/yancore/subject-exchange`：AI Web BFF 以独立 Basic 客户端凭据提交短期主站访问令牌；API 只向固定 UserInfo 地址复验，并只映射已绑定 `yanchuaner` OAuth 的用户。
 
+交换成功时同一响应还会一次性返回 `credential.access_key`。它是兼容 `/v1` 的应用会话 Key，不是 grant 本身；数据库只保存 SHA-256 值、脱敏片段、模型白名单、有限额度和过期时间。
+
 ## 身份交换边界
 
 - `subject_token` 只在服务端请求体中短暂存在，不写数据库、日志或浏览器可读状态；
@@ -36,6 +38,10 @@
 - 交换客户端 Secret、主站 OIDC Client Secret 与 grant 签名 Secret 相互独立；
 - 不按邮箱自动合并账户，也不通过交换接口创建 New API 用户；未绑定主体返回 403；
 - 交换接口只能签发 `ai-web / yanchuaner-ai / chat:read chat:write`，TTL 不超过 15 分钟。
+- `YANCHUANER_HASHED_KEYS_ENABLED=true`、正数 `YANCHUANER_AI_WEB_SESSION_QUOTA` 和非空 `YANCHUANER_AI_WEB_MODELS` 缺一不可；会话预算上限为 1 USD 对应的额度单位；
+- 会话 Key 名称包含 grant 数据库 ID，便于调用日志与授权记录关联；再次登录会软删除旧 `ai-web` Key，旧凭据不再认证；
+- `yan_core_application_sessions` 以 `(user_id, application)` 唯一约束串行化并发登录，保存当前 Token/grant 指针但不保存任何明文凭据；
+- Key 的模型白名单在 AI BFF 和兼容网关各校验一次；用户总公益额度仍由不可变流水和余额投影结算，不与会话预算混为同一字段。
 
 ## 第三方隔离
 
@@ -48,9 +54,10 @@ New API 当前继续承载兼容网关和模型转发，但不拥有 `app`、`au
 - 错误受众、错误签名、过期和撤销 grant 均失败；
 - 用户只能查看和撤销自己的 grant；
 - 错误交换客户端、失效主站令牌、未认证角色、未绑定主体和停用 API 用户均拒绝；
+- 明文会话 Key 仅出现于交换响应，数据库哈希不能作为 bearer 重放；旧会话 Key 轮换后失效；
 - 重启后 grant 仍可验证，轮换 Secret 的行为有明确停机/迁移方案；
 - API、AI、YCZX Code 使用同一契约测试，不复制上游实现。
 
 ## 回滚
 
-先关闭 `YANCHUANER_SUBJECT_EXCHANGE_ENABLED`，AI Web 停止建立新会话；必要时再关闭 grant 签发入口。保留已签发记录和只读 introspection；AI/Agent 可回退到各自受限服务账户，但不得把共享账户调用解释为个人公益额度。数据库字段不删除，待新控制面替换后迁移。
+先关闭 `YANCHUANER_SUBJECT_EXCHANGE_ENABLED`，AI Web 停止建立新会话；已签发 Key 与 grant 最迟 15 分钟失效，也可按保留的 Token ID 和 grant ID 立即撤销。必要时停止自主 AI Web profile，Open WebUI 只回退为受限服务账户 PoC，不得把共享账户调用解释为个人公益额度。数据库字段和审计记录不删除。

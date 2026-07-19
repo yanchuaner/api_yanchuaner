@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -54,17 +55,20 @@ func TestFetchYanCoreMainSiteIdentityStopsRedirectAndBoundsResponse(t *testing.T
 func TestExchangeYanCoreSubjectGrantRequiresTrustedBinding(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
 	db, err := gorm.Open(sqlite.Open("file:yancore_subject_exchange?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB, model.LOG_DB = db, db
 	t.Cleanup(func() {
 		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.RedisEnabled = previousRedisEnabled
 		sqlDB, dbErr := db.DB()
 		if dbErr == nil {
 			_ = sqlDB.Close()
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.CustomOAuthProvider{}, &model.UserOAuthBinding{}, &model.YanCoreSubjectGrant{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.CustomOAuthProvider{}, &model.UserOAuthBinding{}, &model.YanCoreSubjectGrant{}, &model.Token{}, &model.YanCoreApplicationSession{}))
 
 	provider := &model.CustomOAuthProvider{Name: "Yanchuaner", Slug: "yanchuaner", Enabled: true}
 	require.NoError(t, db.Create(provider).Error)
@@ -86,6 +90,9 @@ func TestExchangeYanCoreSubjectGrantRequiresTrustedBinding(t *testing.T) {
 	t.Setenv("YANCHUANER_SUBJECT_EXCHANGE_USERINFO_URL", userinfo.URL)
 	t.Setenv("YANCHUANER_SUBJECT_EXCHANGE_ALLOW_INSECURE_HTTP", "true")
 	t.Setenv("YANCHUANER_SUBJECT_SIGNING_SECRET", "abcdefghijklmnopqrstuvwxyz012345")
+	t.Setenv("YANCHUANER_HASHED_KEYS_ENABLED", "true")
+	t.Setenv("YANCHUANER_AI_WEB_SESSION_QUOTA", "50000")
+	t.Setenv("YANCHUANER_AI_WEB_MODELS", "gpt-4.1-mini,deepseek-chat")
 
 	router := gin.New()
 	router.POST("/api/yancore/subject-exchange", ExchangeYanCoreSubjectGrant)
@@ -98,15 +105,32 @@ func TestExchangeYanCoreSubjectGrantRequiresTrustedBinding(t *testing.T) {
 	var success struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Grant string `json:"grant"`
+			Grant      string `json:"grant"`
+			Credential struct {
+				AccessKey  string   `json:"access_key"`
+				Models     []string `json:"models"`
+				QuotaUnits int      `json:"quota_units"`
+				ExpiresAt  int64    `json:"expires_at"`
+			} `json:"credential"`
 		} `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &success))
 	require.True(t, success.Success)
 	require.NotEmpty(t, success.Data.Grant)
+	require.NotEmpty(t, success.Data.Credential.AccessKey)
+	assert.Equal(t, []string{"gpt-4.1-mini", "deepseek-chat"}, success.Data.Credential.Models)
+	assert.Equal(t, 50000, success.Data.Credential.QuotaUnits)
 	claims, err := model.ParseSubjectGrantForAudience(success.Data.Grant, yanCoreExchangeAudience)
 	require.NoError(t, err)
 	assert.Equal(t, "yc_user_"+strconv.Itoa(user.Id), claims.Subject)
+	var stored model.Token
+	require.NoError(t, db.Where("user_id = ?", user.Id).First(&stored).Error)
+	assert.True(t, stored.KeyHashEnabled)
+	assert.Equal(t, model.HashVirtualKey(strings.TrimPrefix(success.Data.Credential.AccessKey, "sk-")), stored.Key)
+	assert.NotEqual(t, strings.TrimPrefix(success.Data.Credential.AccessKey, "sk-"), stored.Key)
+	assert.True(t, stored.ModelLimitsEnabled)
+	assert.Equal(t, "gpt-4.1-mini,deepseek-chat", stored.ModelLimits)
+	assert.Equal(t, success.Data.Credential.ExpiresAt, stored.ExpiredTime)
 
 	require.NoError(t, db.Delete(binding).Error)
 	request = httptest.NewRequest(http.MethodPost, "/api/yancore/subject-exchange", bytes.NewBufferString(`{"subject_token":"main-access-token","ttl":600}`))

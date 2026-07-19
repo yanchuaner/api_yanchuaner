@@ -182,6 +182,13 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if model.IsReservedYanCoreTokenName(token.Name) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Token names beginning with yancore: are reserved for application credentials.",
+		})
+		return
+	}
 	hashedKeyEnabled := common.GetEnvOrDefaultBool("YANCHUANER_HASHED_KEYS_ENABLED", false)
 	if hashedKeyEnabled && strings.TrimSpace(token.Name) == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)

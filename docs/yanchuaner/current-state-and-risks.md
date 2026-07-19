@@ -65,7 +65,7 @@ flowchart LR
 | P0 | 原创产品入口尚未完成 | 阶段 1 已开始实现 YanCore 主体协议；缺少 Open WebUI 品牌授权不阻止自主研发，但 Open WebUI 不能继续作为燕中原创产品入口公开扩张。 |
 | P0 | 集成生产验收未完成 | SQLite 镜像启动迁移、PostgreSQL 16.14 流水/Token 列迁移和完整 Docker 镜像构建已通过；真实主站 OIDC、OpenAI/DeepSeek 调用、MySQL 兼容、备份恢复和回滚演练仍未完成，完成前不得上线。 |
 | P0 | 旧 Key 仍为明文 | 本次只保证新建燕中虚拟 Key 为哈希。既有 Token 必须盘点、轮换和撤销，不能原地转换后继续向用户展示同一秘密。 |
-| P0 | AI 工作台个人归因缺失 | Open WebUI 服务 Key 只能形成服务账户账单；普通成员开放前需要用户委托或逐用户 Key。 |
+| P0 | AI 工作台真实调用尚待环境验收 | 自主 AI Web 已实现逐用户短期 Key、SSE 代理和标准扣费/日志路径；真实 OpenAI/DeepSeek、失败退款、request_id 查询和并发耗尽仍须在集成环境逐项验收。Open WebUI 服务 Key 仍只能形成服务账户账单。 |
 | P0 | 许可仍待法律与运营确认 | `ai_yanchuaner` 已补仓库许可状态、第三方许可全文、来源矩阵和安全/贡献流程；运营主体、自主代码最终许可证、Open WebUI 法律声明页和品牌授权仍须人工确认。 |
 | P1 | 每 Key RPM/TPM 未完成 | 现有 New API 只支持用户/分组级请求限流。虚拟 Key 独立 RPM、TPM 和并发限制必须在开放 Agent 前实现。 |
 | P1 | 权益来源尚未拆分 | 当前新流水只迁移 `public_benefit`。活动权益、兑换码和 BYOK 不能复用同一余额静默扣减。 |

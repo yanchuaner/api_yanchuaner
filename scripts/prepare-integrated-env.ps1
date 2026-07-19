@@ -104,6 +104,8 @@ Set-DotEnvValues $apiEnv @{
   YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET = $subjectExchangeSecret
   YANCHUANER_SUBJECT_EXCHANGE_USERINFO_URL = "http://host.docker.internal:3000/api/oauth/userinfo"
   YANCHUANER_SUBJECT_EXCHANGE_ALLOW_INSECURE_HTTP = "true"
+  YANCHUANER_AI_WEB_SESSION_QUOTA = "50000"
+  YANCHUANER_AI_WEB_MODELS = "gpt-4.1-mini,deepseek-chat"
   WEB_MAIN_PUBLIC_URL = "http://localhost:3000"
   WEB_MAIN_INTERNAL_URL = "http://host.docker.internal:3000"
   LITELLM_PUBLIC_URL = "http://127.0.0.1:4000"

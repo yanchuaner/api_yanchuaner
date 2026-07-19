@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,21 @@ type yanCoreMainSiteIdentity struct {
 func subjectGrantExchangeEnabled() bool {
 	return common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_GRANTS_ENABLED", false) &&
 		common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_EXCHANGE_ENABLED", false)
+}
+
+func aiWebSessionKeyPolicy() (int, []string, error) {
+	if !common.GetEnvOrDefaultBool("YANCHUANER_HASHED_KEYS_ENABLED", false) {
+		return 0, nil, model.ErrAiWebSessionKeyPolicy
+	}
+	quota, err := strconv.Atoi(strings.TrimSpace(common.GetEnvOrDefaultString("YANCHUANER_AI_WEB_SESSION_QUOTA", "")))
+	if err != nil || quota <= 0 || quota > int(common.QuotaPerUnit) {
+		return 0, nil, model.ErrAiWebSessionKeyPolicy
+	}
+	models, err := model.NormalizeAiWebSessionModels(strings.Split(common.GetEnvOrDefaultString("YANCHUANER_AI_WEB_MODELS", ""), ","))
+	if err != nil {
+		return 0, nil, err
+	}
+	return quota, models, nil
 }
 
 func authorizeYanCoreExchangeClient(value string) bool {
@@ -178,14 +194,33 @@ func ExchangeYanCoreSubjectGrant(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "API account is disabled."})
 		return
 	}
+	quota, allowedModels, err := aiWebSessionKeyPolicy()
+	if err != nil {
+		common.SysLog("YanCore ai-web session key policy is incomplete: " + err.Error())
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "YanCore ai-web credential policy is unavailable."})
+		return
+	}
 	token, grant, err := model.IssueSubjectGrant(user.Id, yanCoreExchangeApplication, yanCoreExchangeAudience, yanCoreExchangeScopes, ttl)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("YanCore subject grant exchange failed for user %d: %s", user.Id, err.Error()))
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "YanCore subject grant could not be issued."})
 		return
 	}
+	accessKey, sessionToken, err := model.IssueAiWebSessionKey(user.Id, grant.Id, grant.ExpiresAt, quota, allowedModels)
+	if err != nil {
+		_ = model.RevokeSubjectGrant(user.Id, grant.Id)
+		common.SysLog(fmt.Sprintf("YanCore ai-web session key issuance failed for user %d: %s", user.Id, err.Error()))
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "YanCore ai-web credential could not be issued."})
+		return
+	}
 	common.ApiSuccess(c, gin.H{
 		"grant": token,
+		"credential": gin.H{
+			"access_key":  accessKey,
+			"models":      sessionToken.GetModelLimits(),
+			"quota_units": sessionToken.RemainQuota,
+			"expires_at":  sessionToken.ExpiredTime,
+		},
 		"subject": gin.H{
 			"user_id":     user.Id,
 			"application": grant.Application,
