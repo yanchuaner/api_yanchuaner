@@ -68,7 +68,7 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 - 燕中 AI：`http://localhost:3001`
 - LiteLLM 管理端：`http://localhost:4000/ui`
 
-详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
+详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)，阶段 0 决策与发布门禁见 [阶段 0 决策登记](docs/yanchuaner/phase-0-decision-record.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
 
 ## 安全边界
 
