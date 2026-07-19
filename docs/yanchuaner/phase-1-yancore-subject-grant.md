@@ -1,7 +1,7 @@
 # 阶段 1：YanCore 主体凭证
 
 更新日期：2026-07-19
-状态：`IMPLEMENTED_CONTRACT_PENDING_INTEGRATION`
+状态：`IDENTITY_EXCHANGE_IMPLEMENTED`
 
 ## 目标
 
@@ -11,7 +11,7 @@
 
 | 项目 | 规则 |
 | --- | --- |
-| 签发 | 仅主站认证用户通过 API 会话签发 |
+| 签发 | API 会话或自主 AI Web BFF 持有的短期主站访问令牌；两条路径最终映射到同一 API 用户 |
 | 主体 | JWT `sub=yc_user_<id>`，不携带邮箱、姓名或班级等多余资料 |
 | 应用 | v0 仅允许已登记的 `ai-web`；新增应用必须修改策略并补测试 |
 | 受众 | v0 固定 `yanchuaner-ai`，introspection 必须声明受众以阻止跨应用重放 |
@@ -27,6 +27,15 @@
 - `GET /api/yancore/grants/`：登录用户查看自己的 grant 元数据，永不返回 JWT。
 - `DELETE /api/yancore/grants/:id`：登录用户撤销自己的 grant。
 - `POST /api/yancore/grants/introspect`：持有者以 `Authorization: Bearer <grant>` 请求校验主体、应用、受众、scope 和过期时间。
+- `POST /api/yancore/subject-exchange`：AI Web BFF 以独立 Basic 客户端凭据提交短期主站访问令牌；API 只向固定 UserInfo 地址复验，并只映射已绑定 `yanchuaner` OAuth 的用户。
+
+## 身份交换边界
+
+- `subject_token` 只在服务端请求体中短暂存在，不写数据库、日志或浏览器可读状态；
+- UserInfo 地址由部署环境固定，客户端不能提交 URL；HTTP 仅可通过显式本地开发开关启用；
+- 交换客户端 Secret、主站 OIDC Client Secret 与 grant 签名 Secret 相互独立；
+- 不按邮箱自动合并账户，也不通过交换接口创建 New API 用户；未绑定主体返回 403；
+- 交换接口只能签发 `ai-web / yanchuaner-ai / chat:read chat:write`，TTL 不超过 15 分钟。
 
 ## 第三方隔离
 
@@ -38,9 +47,10 @@ New API 当前继续承载兼容网关和模型转发，但不拥有 `app`、`au
 - 签发后的 JWT 不落库，数据库只出现 JTI 哈希；
 - 错误受众、错误签名、过期和撤销 grant 均失败；
 - 用户只能查看和撤销自己的 grant；
+- 错误交换客户端、失效主站令牌、未认证角色、未绑定主体和停用 API 用户均拒绝；
 - 重启后 grant 仍可验证，轮换 Secret 的行为有明确停机/迁移方案；
 - API、AI、YCZX Code 使用同一契约测试，不复制上游实现。
 
 ## 回滚
 
-关闭阶段 1 grant 签发入口，保留已签发记录和只读 introspection；AI/Agent 回退到各自受限服务账户，但不得把共享账户调用解释为个人公益额度。数据库字段不删除，待新控制面替换后迁移。
+先关闭 `YANCHUANER_SUBJECT_EXCHANGE_ENABLED`，AI Web 停止建立新会话；必要时再关闭 grant 签发入口。保留已签发记录和只读 introspection；AI/Agent 可回退到各自受限服务账户，但不得把共享账户调用解释为个人公益额度。数据库字段不删除，待新控制面替换后迁移。

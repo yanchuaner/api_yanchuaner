@@ -95,6 +95,7 @@ func GetStatus(c *gin.Context) {
 		"default_use_auto_group":         setting.DefaultUseAutoGroup,
 		"yanchuaner_hashed_keys_enabled": common.GetEnvOrDefaultBool("YANCHUANER_HASHED_KEYS_ENABLED", false),
 		"yancore_subject_grants_enabled": common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_GRANTS_ENABLED", false),
+		"yancore_subject_exchange_enabled": common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_EXCHANGE_ENABLED", false),
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,
 		"price":             operation_setting.Price,

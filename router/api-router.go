@@ -249,6 +249,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		yanCoreRoute := apiRouter.Group("/yancore")
 		{
+			yanCoreRoute.POST("/subject-exchange", middleware.CriticalRateLimit(), controller.ExchangeYanCoreSubjectGrant)
 			yanCoreRoute.POST("/grants/introspect", middleware.CriticalRateLimit(), controller.IntrospectYanCoreSubjectGrant)
 			yanCoreUserRoute := yanCoreRoute.Group("/grants")
 			yanCoreUserRoute.Use(middleware.UserAuth())

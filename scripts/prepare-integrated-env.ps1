@@ -76,6 +76,8 @@ $oauthSecret = $apiValues["YANCHUANER_OAUTH_CLIENT_SECRET"]
 if ([string]::IsNullOrWhiteSpace($oauthSecret)) { $oauthSecret = New-UrlSafeSecret 48 }
 $aiOAuthSecret = $apiValues["YANCHUANER_AI_OAUTH_CLIENT_SECRET"]
 if ([string]::IsNullOrWhiteSpace($aiOAuthSecret)) { $aiOAuthSecret = New-UrlSafeSecret 48 }
+$subjectExchangeSecret = $apiValues["YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET"]
+if ([string]::IsNullOrWhiteSpace($subjectExchangeSecret)) { $subjectExchangeSecret = New-UrlSafeSecret 48 }
 $oauthSigningKey = $webValues["YANCHUANER_OAUTH_SIGNING_KEY"]
 if ([string]::IsNullOrWhiteSpace($oauthSigningKey)) { $oauthSigningKey = New-RsaPrivateKeyBase64 }
 $rootPassword = $apiValues["NEW_API_ROOT_PASSWORD"]
@@ -97,6 +99,11 @@ Set-DotEnvValues $apiEnv @{
   YANCHUANER_OAUTH_CLIENT_SECRET = $oauthSecret
   YANCHUANER_AI_OAUTH_CLIENT_ID = "ai-yanchuaner"
   YANCHUANER_AI_OAUTH_CLIENT_SECRET = $aiOAuthSecret
+  YANCHUANER_SUBJECT_EXCHANGE_ENABLED = "false"
+  YANCHUANER_SUBJECT_EXCHANGE_CLIENT_ID = "ai-yancore-bff"
+  YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET = $subjectExchangeSecret
+  YANCHUANER_SUBJECT_EXCHANGE_USERINFO_URL = "http://host.docker.internal:3000/api/oauth/userinfo"
+  YANCHUANER_SUBJECT_EXCHANGE_ALLOW_INSECURE_HTTP = "true"
   WEB_MAIN_PUBLIC_URL = "http://localhost:3000"
   WEB_MAIN_INTERNAL_URL = "http://host.docker.internal:3000"
   LITELLM_PUBLIC_URL = "http://127.0.0.1:4000"
@@ -130,6 +137,8 @@ Set-DotEnvValues $webEnv @{
 }
 
 $aiValues = Read-DotEnv $aiEnv
+$aiWebSessionSecret = $aiValues["AI_WEB_SESSION_SECRET"]
+if ([string]::IsNullOrWhiteSpace($aiWebSessionSecret)) { $aiWebSessionSecret = New-UrlSafeSecret 48 }
 $openWebUiApiKey = $aiValues["OPENWEBUI_API_KEY"]
 if ([string]::IsNullOrWhiteSpace($openWebUiApiKey)) {
   $openWebUiApiKey = $aiValues["OPENWEBUI_LITELLM_KEY"]
@@ -140,7 +149,18 @@ if ([string]::IsNullOrWhiteSpace($openWebUiApiKey)) {
 
 Set-DotEnvValues $aiEnv @{
   AI_CORE_NETWORK = "yanchuaner-ai-core"
+  AI_WEB_HOST_PORT = "3002"
+  AI_WEB_PUBLIC_URL = "http://localhost:3002"
+  AI_WEB_SESSION_SECRET = $aiWebSessionSecret
+  AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP = "true"
   API_GATEWAY_BASE_URL = "http://api-gateway:3000/v1"
+  YANCORE_API_BASE_URL = "http://api-gateway:3000"
+  YANCORE_OIDC_ISSUER = "http://localhost:3000"
+  YANCORE_OIDC_DISCOVERY_URL = "http://host.docker.internal:3000/api/oauth/.well-known/openid-configuration"
+  YANCORE_OIDC_CLIENT_ID = "ai-yanchuaner"
+  YANCORE_OIDC_CLIENT_SECRET = $aiOAuthSecret
+  YANCORE_SUBJECT_EXCHANGE_CLIENT_ID = "ai-yancore-bff"
+  YANCORE_SUBJECT_EXCHANGE_CLIENT_SECRET = $subjectExchangeSecret
   OPENWEBUI_API_KEY = $openWebUiApiKey
   OPENWEBUI_IMAGE_API_KEY = $openWebUiApiKey
   OPENWEBUI_HOST_PORT = "3001"
