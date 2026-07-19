@@ -25,10 +25,13 @@ LiteLLM 数据面  ----->  网关 PostgreSQL
 | 主站 | 登录、邮箱验证、成员身份审核、停用账号 | 模型密钥与消费账本 |
 | New API | 兼容网关、用户映射、模型权限和余额投影 | 保存真实 BYOK、供应商故障切换 |
 | 燕中 P0 模块 | 哈希虚拟 Key、公益额度流水、请求级审计关联 | 活动权益、BYOK、供应商成本核对 |
+| YanCore 主体协议 | 用户、应用、受众、scope 与短期授权 | 模型路由、对话存储、第三方品牌 |
 | LiteLLM | 上游凭据、路由、重试、供应商成本核对 | 面向用户的余额真值 |
 | BYOK Vault | 后续加密保存和按用户解密凭据 | 用户额度结算 |
 
 燕中 `quota_ledger_entries` 是已迁移公益额度路径的业务流水真值，`users.quota` 是同事务维护的 New API 兼容投影。LiteLLM 的费用数据只用于供应商成本核对，不得再次扣减用户余额。活动权益、兑换码、订阅和 BYOK 尚未进入该流水，预览期保持关闭。
+
+阶段 1 的 `YanCore Subject Grant` 是燕中自主定义的应用主体协议。New API 当前只承载该协议的过渡运行时，Open WebUI 与 LiteLLM 不拥有其业务语义。契约见 [phase-1-yancore-subject-grant.md](phase-1-yancore-subject-grant.md)。
 
 ## 主站 OAuth 契约
 

@@ -20,6 +20,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 
 `deploy/.env` 必须保持 `YANCHUANER_HASHED_KEYS_ENABLED=true` 与 `YANCHUANER_QUOTA_LEDGER_ENABLED=true`。前者只影响新 Key 的创建方式；后者启用已有余额的 opening balance 回填和公益额度流水路径。
 
+阶段 1 的 `YANCHUANER_SUBJECT_GRANTS_ENABLED` 默认保持 `false`。完成数据库迁移、独立 `YANCHUANER_SUBJECT_SIGNING_SECRET` 备份和 AI Web 契约测试后再启用；该 Secret 不得复用 Session、Crypto 或 LiteLLM Master Key。
+
 ## 首次初始化顺序
 
 1. 在本机隧道中完成 New API root 初始化。引导脚本会生成 `NEW_API_ROOT_USER_ID` 与 `NEW_API_ROOT_ACCESS_TOKEN` 并仅写入忽略提交的 `deploy/.env`，供关闭密码登录后的重复部署使用。

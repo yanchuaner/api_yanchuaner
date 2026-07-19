@@ -247,6 +247,17 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			yanchuanerRoute.GET("/quota-ledger", controller.GetMyQuotaLedger)
 		}
+		yanCoreRoute := apiRouter.Group("/yancore")
+		{
+			yanCoreRoute.POST("/grants/introspect", middleware.CriticalRateLimit(), controller.IntrospectYanCoreSubjectGrant)
+			yanCoreUserRoute := yanCoreRoute.Group("/grants")
+			yanCoreUserRoute.Use(middleware.UserAuth())
+			{
+				yanCoreUserRoute.POST("/", middleware.CriticalRateLimit(), controller.IssueYanCoreSubjectGrant)
+				yanCoreUserRoute.GET("/", controller.ListYanCoreSubjectGrants)
+				yanCoreUserRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.RevokeYanCoreSubjectGrant)
+			}
+		}
 
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())

@@ -59,6 +59,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `model/yanchuaner_quota_ledger.go` 及测试 | 独立数据模型、幂等事务、不透支和初始赠额测试 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_quota_ledger.go` | 独立流水查询与管理员发放适配 | 随仓库 AGPLv3-or-later |
 | `service/yanchuaner_wallet_ledger_test.go` | 独立预扣、结算、退款行为证据 | 随仓库 AGPLv3-or-later |
+| `model/yanchuaner_subject_grant.go`、`controller/yanchuaner_subject_grant.go` 及测试 | 独立主体、应用、受众、scope、短期签名、撤销和防跨应用重放协议 | 随仓库 AGPLv3-or-later |
 | `docs/yanchuaner/**` | 燕中需求、架构、验收、迁移和来源设计 | 作者版权；仓库分发条件待运营主体/贡献政策确认 |
 | `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1` | 燕中部署边界与密钥生成流程 | 作者版权；不得包含生产秘密 |
 
