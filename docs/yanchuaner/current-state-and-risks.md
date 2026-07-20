@@ -68,7 +68,7 @@ flowchart LR
 | P0 | AI 工作台真实调用尚待环境验收 | 自主 AI Web 已实现逐用户短期 Key、SSE 代理和标准扣费/日志路径；真实 OpenAI/DeepSeek、失败退款、request_id 查询和并发耗尽仍须在集成环境逐项验收。Open WebUI 服务 Key 仍只能形成服务账户账单。 |
 | P0 | 许可仍待法律与运营确认 | `ai_yanchuaner` 已补仓库许可状态、第三方许可全文、来源矩阵和安全/贡献流程；运营主体、自主代码最终许可证、Open WebUI 法律声明页和品牌授权仍须人工确认。 |
 | P1 | 每 Key RPM/TPM 未完成 | 现有 New API 只支持用户/分组级请求限流。虚拟 Key 独立 RPM、TPM 和并发限制必须在开放 Agent 前实现。 |
-| P1 | 权益来源尚未拆分 | 当前新流水只迁移 `public_benefit`。活动权益、兑换码和 BYOK 不能复用同一余额静默扣减。 |
+| P1 | 权益来源仍在扩展 | 活动和兑换码已接入独立 YanCore 表、`campaign` funding source、权益流水和领取幂等；目标人群、管理员 UI、BYOK 和消费时的来源选择仍未完成。 |
 | P1 | 供应商边界依赖 group | 当前供应商限制主要通过 New API group/渠道配置表达；需要独立 provider allowlist 和路由后复核。 |
 | P1 | Redis 许可证 | `7.4.9` 为 RSALv2/SSPLv1 双许可。只允许作为不暴露给用户的内部缓存；禁止把 Redis 功能本身作为服务提供。 |
 | P2 | 上游共享状态测试失败 | 未修改基线也会出现 `channel_affinity_usage_cache_test` 计数污染。应修复测试隔离，但不阻塞本轮新增行为的定向测试。 |

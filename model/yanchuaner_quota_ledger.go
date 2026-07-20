@@ -26,6 +26,7 @@ const (
 	QuotaLedgerTypeLegacy         = "legacy"
 
 	QuotaFundingPublicBenefit = "public_benefit"
+	QuotaFundingCampaign      = "campaign"
 	QuotaFundingLegacy        = "legacy"
 )
 

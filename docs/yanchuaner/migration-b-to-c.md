@@ -28,6 +28,13 @@
 
 ## P1：自主权益与密钥域
 
+当前已完成的 P1 slice：
+
+- `YanCoreCampaign`、`YanCoreRedeemCode`、`YanCoreEntitlement`、`YanCoreEntitlementClaim` 和权益流水为独立自主表，不复用 New API `Redemption`。
+- 管理员可创建有效期、额度、供应商/模型范围和领取上限，兑换码只保存 SHA-256 摘要并只在创建响应展示一次。
+- 用户领取在单事务内锁定活动和兑换码，写入权益领取记录、权益流水和 `campaign` 来源总账；同一用户/活动重复领取为幂等返回，余额不重复增加。
+- 模型测试覆盖首次领取、重复请求、来源分账和领取上限；尚未开放真实生产活动、定向人群规则和消费时的多来源扣减。
+
 ### 工作项
 
 - 独立 entitlement、campaign、redeem_code、claim 和目标人群模型。

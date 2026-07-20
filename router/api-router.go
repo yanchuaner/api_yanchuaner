@@ -258,6 +258,18 @@ func SetApiRouter(router *gin.Engine) {
 				yanCoreUserRoute.GET("/", controller.ListYanCoreSubjectGrants)
 				yanCoreUserRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.RevokeYanCoreSubjectGrant)
 			}
+			yanCoreEntitlementRoute := yanCoreRoute.Group("/entitlements")
+			yanCoreEntitlementRoute.Use(middleware.UserAuth())
+			{
+				yanCoreEntitlementRoute.POST("/claim", middleware.CriticalRateLimit(), controller.ClaimYanCoreEntitlement)
+				yanCoreEntitlementRoute.GET("/", controller.ListYanCoreEntitlements)
+			}
+			yanCoreCampaignRoute := yanCoreRoute.Group("/campaigns")
+			yanCoreCampaignRoute.Use(middleware.AdminAuth())
+			{
+				yanCoreCampaignRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateYanCoreCampaign)
+				yanCoreCampaignRoute.POST("/:id/redeem-codes", middleware.CriticalRateLimit(), controller.CreateYanCoreRedeemCodes)
+			}
 		}
 
 		usageRoute := apiRouter.Group("/usage")
