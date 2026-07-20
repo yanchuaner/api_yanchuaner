@@ -89,6 +89,17 @@ func IssueAiWebSessionKey(userID int, grantID int64, expiresAt int64, quota int,
 		tx.Rollback()
 		return "", nil, err
 	}
+	if YanCoreVirtualKeyPolicyEnabled() {
+		policy, policyErr := BuildYanCoreVirtualKeyPolicy(token, nil)
+		if policyErr != nil {
+			tx.Rollback()
+			return "", nil, policyErr
+		}
+		if policyErr = createYanCoreVirtualKeyPolicyWithTx(tx, token, policy, userID, "initial ai-web session policy"); policyErr != nil {
+			tx.Rollback()
+			return "", nil, policyErr
+		}
+	}
 	session := &YanCoreApplicationSession{
 		UserId:      userID,
 		Application: "ai-web",

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -149,6 +150,29 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	relayInfo.SetEstimatePromptTokens(tokens)
+	estimatedTPMTokens := tokens
+	if meta != nil && meta.MaxTokens > 0 {
+		if estimatedTPMTokens > math.MaxInt32-meta.MaxTokens {
+			newAPIError = types.NewErrorWithStatusCode(errors.New("estimated token count exceeds policy bounds"), types.ErrorCodeAccessDenied, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return
+		}
+		estimatedTPMTokens += meta.MaxTokens
+	}
+	if err := service.BeginYanCoreVirtualKeyRequest(c, estimatedTPMTokens); err != nil {
+		status := http.StatusTooManyRequests
+		if errors.Is(err, service.ErrYanCoreVirtualKeyLimiterUnavailable) {
+			status = http.StatusServiceUnavailable
+		} else if errors.Is(err, model.ErrYanCoreVirtualKeyPolicyInvalid) {
+			status = http.StatusForbidden
+		}
+		newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeAccessDenied, status, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		return
+	}
+	defer func() {
+		if err := service.FinalizeYanCoreVirtualKeyRequest(c); err != nil {
+			logger.LogError(c, "error finalizing virtual key rate reservation: "+err.Error())
+		}
+	}()
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {

@@ -280,6 +280,8 @@ func migrateDB() error {
 		&YanCoreEntitlement{},
 		&YanCoreEntitlementClaim{},
 		&YanCoreEntitlementLedgerEntry{},
+		&YanCoreVirtualKeyPolicy{},
+		&YanCoreVirtualKeyPolicyRevision{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -314,6 +316,9 @@ func migrateDB() error {
 	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
 		return err
 	}
+	if err := BackfillYanCoreVirtualKeyPolicies(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -345,6 +350,8 @@ func migrateDBFast() error {
 		{&YanCoreEntitlement{}, "YanCoreEntitlement"},
 		{&YanCoreEntitlementClaim{}, "YanCoreEntitlementClaim"},
 		{&YanCoreEntitlementLedgerEntry{}, "YanCoreEntitlementLedgerEntry"},
+		{&YanCoreVirtualKeyPolicy{}, "YanCoreVirtualKeyPolicy"},
+		{&YanCoreVirtualKeyPolicyRevision{}, "YanCoreVirtualKeyPolicyRevision"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -395,6 +402,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
+		return err
+	}
+	if err := BackfillYanCoreVirtualKeyPolicies(); err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {

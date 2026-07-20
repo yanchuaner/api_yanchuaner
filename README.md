@@ -23,6 +23,7 @@
 - 主站管理员同步为燕中 API 管理员；其他 OAuth 提供方不能通过角色字段提权。
 - 新成员首期公益额度为 `$1.00 / ¥7.00`。
 - 用户按应用/场景创建和撤销虚拟 Key；新 Key 只展示一次，服务端只保存哈希与脱敏片段。
+- YanCore 策略为每个哈希 Key 限定 OpenAI/DeepSeek 供应商、模型、有限预算、有效期、来源 IP、RPM、TPM 与并发，并为策略变更保存不可变修订。
 - 公益额度的赠送、预扣、结算、退款和管理员调整写入不可变流水，余额字段只作兼容投影。
 - 自主燕中 AI 登录后获得 15 分钟、有限预算且仅允许配置模型的应用会话 Key；调用继续进入标准 `/v1` 扣费和用量日志链路。
 - 管理员定向增减或覆盖额度时必须填写原因，并记录操作者、目标用户、金额与原因。
@@ -72,7 +73,7 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 - 燕中 AI：`http://localhost:3001`
 - LiteLLM 管理端：`http://localhost:4000/ui`
 
-详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)、[YanCore 主体凭证](docs/yanchuaner/phase-1-yancore-subject-grant.md) 和 [权益迁移](docs/yanchuaner/migration-b-to-c.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
+详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)、[YanCore 主体凭证](docs/yanchuaner/phase-1-yancore-subject-grant.md)、[虚拟 Key 策略](docs/yanchuaner/phase-2-virtual-key-policy.md) 和 [权益迁移](docs/yanchuaner/migration-b-to-c.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
 
 ## 安全边界
 

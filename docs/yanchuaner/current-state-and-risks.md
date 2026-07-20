@@ -1,6 +1,6 @@
 # 燕中 AI/API 现状、数据流与风险
 
-审计基线：2026-07-19。代码结论以 `origin/main`、Git 历史、锁文件和镜像清单为依据，不以产品说明代替实现证据。
+审计基线：2026-07-21。代码结论以功能分支基线、Git 历史、锁文件、镜像清单和可重复测试为依据，不以产品说明代替实现证据。
 
 ## 现状架构
 
@@ -36,15 +36,16 @@ flowchart LR
 2. 首次登录在创建本地用户的同一事务中追加 `grant` 公益额度流水；`users.quota` 是兼容投影。
 3. 新虚拟 Key 以 `sk-yc_<64 hex>` 返回一次；数据库只保存 `sha256:<digest>`、前缀和尾号。
 4. 请求认证先哈希提交的虚拟 Key，再读取兼容 Token 记录；数据库哈希本身不能作为 bearer token 重放。
-5. 标准文本请求按同一 `request_id` 追加 `reserve`、可选 `settlement` 或 `refund` 流水，并继续写 New API 用量日志。
-6. LiteLLM 只负责路由、重试和上游成本核对，不再次扣减用户余额。
+5. 策略开关开启后，认证加载 YanCore Key 策略，选路后复核 OpenAI/DeepSeek 供应商，转发前原子预留 RPM/TPM/并发；缺失、禁用或 Redis 故障均不静默放行。
+6. 标准文本请求按同一 `request_id` 追加 `reserve`、可选 `settlement` 或 `refund` 流水，并继续写 New API 用量日志；真实用量同时结算 Key 的 TPM 预留。
+7. LiteLLM 只负责路由、重试和上游成本核对，不再次扣减用户余额。
 
 当前 Open WebUI 仍使用服务 Key，API 侧不能据此识别最终聊天用户。开放到普通成员前必须完成用户级委托或可信身份传播，不能把共享服务 Key 日志描述成个人账单。
 
 ## 版权边界
 
 - New API 基线和改动继续受 AGPLv3、`NOTICE` 第 7 条附加署名要求及第三方许可证约束。
-- `model/yanchuaner_*.go`、`controller/yanchuaner_quota_ledger.go` 及对应测试是燕中生态本轮独立设计的新文件，当前随本 AGPL 仓库按 AGPLv3-or-later 分发；这不改变 New API 原代码的版权。
+- `model/yanchuaner_*.go`、`controller/yanchuaner_*.go`、`service/yanchuaner_*.go` 及对应测试是燕中生态按独立需求和设计新增的文件，当前随本 AGPL 仓库按 AGPLv3-or-later 分发；这不改变 New API 原代码及授权修改文件的版权。
 - LiteLLM、Open WebUI、PostgreSQL 和 Redis 是独立镜像/进程，不声明为燕中原创。
 - 运营主体和贡献协议尚未确定，因此不能宣称组织统一持有所有贡献版权，也不能把当前 AGPL 模块事后无条件改为其他许可证。
 
@@ -67,9 +68,9 @@ flowchart LR
 | P0 | 旧 Key 仍为明文 | 本次只保证新建燕中虚拟 Key 为哈希。既有 Token 必须盘点、轮换和撤销，不能原地转换后继续向用户展示同一秘密。 |
 | P0 | AI 工作台真实调用尚待环境验收 | 自主 AI Web 已实现逐用户短期 Key、SSE 代理和标准扣费/日志路径；真实 OpenAI/DeepSeek、失败退款、request_id 查询和并发耗尽仍须在集成环境逐项验收。Open WebUI 服务 Key 仍只能形成服务账户账单。 |
 | P0 | 许可仍待法律与运营确认 | `ai_yanchuaner` 已补仓库许可状态、第三方许可全文、来源矩阵和安全/贡献流程；运营主体、自主代码最终许可证、Open WebUI 法律声明页和品牌授权仍须人工确认。 |
-| P1 | 每 Key RPM/TPM 未完成 | 现有 New API 只支持用户/分组级请求限流。虚拟 Key 独立 RPM、TPM 和并发限制必须在开放 Agent 前实现。 |
+| P1 | 每 Key 限流尚未覆盖异步任务 | 标准同步文本 Relay 已实现 Redis 原子 RPM/TPM/并发与故障 fail-closed；异步任务目前只复核供应商，开放 Agent 异步能力前必须持久化预留并补退款语义。 |
 | P1 | 权益来源仍在扩展 | 活动和兑换码已接入独立 YanCore 表、`campaign` funding source、来源隔离及可开关的同步预扣/结算/退款；异步任务、目标人群、管理员 UI、每 Key 来源策略和 BYOK 尚未完成，开关默认关闭。 |
-| P1 | 供应商边界依赖 group | 当前供应商限制主要通过 New API group/渠道配置表达；需要独立 provider allowlist 和路由后复核。 |
+| P1 | Key 策略仍有兼容投影 | 独立 provider allowlist 与选路后复核已实现；模型、来源 IP、预算和有效期仍在 New API Token，旧更新接口不会追加 YanCore 修订，阶段 C 必须迁入自主事务。 |
 | P1 | Redis 许可证 | `7.4.9` 为 RSALv2/SSPLv1 双许可。只允许作为不暴露给用户的内部缓存；禁止把 Redis 功能本身作为服务提供。 |
 | P2 | 上游共享状态测试失败 | 未修改基线也会出现 `channel_affinity_usage_cache_test` 计数污染。应修复测试隔离，但不阻塞本轮新增行为的定向测试。 |
 | P2 | 本地前端依赖布局易混用 | 同一 Windows `node_modules` 无法同时代表 default 与 classic 的发布安装。发布以 Dockerfile 的隔离阶段为准，详见 `dependency-baseline.md`。 |

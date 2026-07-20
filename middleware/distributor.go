@@ -160,6 +160,16 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
+		if channel != nil {
+			if err := service.CheckYanCoreVirtualKeyProvider(c, modelRequest.Model, channel.Type); err != nil {
+				status := http.StatusForbidden
+				if errors.Is(err, service.ErrYanCoreVirtualKeyPolicyMissing) {
+					status = http.StatusServiceUnavailable
+				}
+				abortWithOpenAiMessage(c, status, err.Error(), types.ErrorCodeAccessDenied)
+				return
+			}
+		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()

@@ -490,15 +490,22 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 }
 
 func yanCoreProviderForRelay(relayInfo *relaycommon.RelayInfo) string {
-	modelName := strings.ToLower(strings.TrimSpace(relayInfo.OriginModelName))
+	if relayInfo == nil {
+		return ""
+	}
+	return YanCoreProviderForRequest(relayInfo.OriginModelName, relayInfo.ChannelType)
+}
+
+// YanCoreProviderForRequest maps the first-party provider vocabulary before
+// LiteLLM routing. Model prefixes take precedence because DeepSeek commonly
+// arrives through an OpenAI-compatible channel.
+func YanCoreProviderForRequest(modelName string, channelType int) string {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
 	switch {
 	case strings.HasPrefix(modelName, "deepseek"):
 		return "deepseek"
 	case strings.HasPrefix(modelName, "gpt-"), strings.HasPrefix(modelName, "o1"), strings.HasPrefix(modelName, "o3"), strings.HasPrefix(modelName, "o4"):
 		return "openai"
 	}
-	if relayInfo.ChannelMeta == nil {
-		return ""
-	}
-	return strings.ToLower(constant.ChannelTypeNames[relayInfo.ChannelType])
+	return strings.ToLower(constant.ChannelTypeNames[channelType])
 }

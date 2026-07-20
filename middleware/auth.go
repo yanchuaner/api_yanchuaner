@@ -461,6 +461,18 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
+	if model.YanCoreVirtualKeyPolicyEnabled() && token.KeyHashEnabled {
+		policy, err := model.GetYanCoreVirtualKeyPolicy(token.Id, token.UserId)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, "failed to load virtual key policy")
+			return err
+		}
+		if policy == nil || policy.Status != model.YanCoreVirtualKeyPolicyActive {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "virtual key policy is missing or disabled", types.ErrorCodeAccessDenied)
+			return service.ErrYanCoreVirtualKeyPolicyMissing
+		}
+		service.SetYanCoreVirtualKeyPolicyContext(c, policy)
+	}
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)
 	}

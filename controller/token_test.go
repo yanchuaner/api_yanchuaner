@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -43,8 +44,9 @@ type tokenKeyResponse struct {
 }
 
 type hashedTokenCreateResponse struct {
-	Key   string            `json:"key"`
-	Token tokenResponseItem `json:"token"`
+	Key    string                         `json:"key"`
+	Token  tokenResponseItem              `json:"token"`
+	Policy *model.YanCoreVirtualKeyPolicy `json:"policy"`
 }
 
 type sqliteColumnInfo struct {
@@ -596,6 +598,53 @@ func TestAddTokenStoresHashAndReturnsSecretOnlyAtCreation(t *testing.T) {
 	if strings.Contains(keyRecorder.Body.String(), created.Key) || strings.Contains(keyRecorder.Body.String(), stored.Key) {
 		t.Fatalf("key retrieval response leaked a credential or hash: %s", keyRecorder.Body.String())
 	}
+}
+
+func TestAddTokenCreatesYanCorePolicyAndRevision(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.YanCoreVirtualKeyPolicy{}, &model.YanCoreVirtualKeyPolicyRevision{}))
+	t.Setenv("YANCHUANER_HASHED_KEYS_ENABLED", "true")
+	t.Setenv("YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED", "true")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{
+		"name":                 "policy-agent",
+		"expired_time":         -1,
+		"remain_quota":         1000,
+		"unlimited_quota":      false,
+		"model_limits_enabled": true,
+		"model_limits":         "gpt-4.1,deepseek-chat",
+		"yancore_policy": map[string]any{
+			"max_rpm":         12,
+			"max_tpm":         2000,
+			"max_concurrency": 1,
+		},
+	}, 7)
+	AddToken(ctx)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var created hashedTokenCreateResponse
+	require.NoError(t, common.Unmarshal(response.Data, &created))
+	require.NotNil(t, created.Policy)
+	require.Equal(t, 12, created.Policy.MaxRPM)
+	require.Equal(t, 2000, created.Policy.MaxTPM)
+	require.Equal(t, 1, created.Policy.MaxConcurrency)
+	var revisions []model.YanCoreVirtualKeyPolicyRevision
+	require.NoError(t, db.Where("token_id = ?", created.Token.ID).Find(&revisions).Error)
+	require.Len(t, revisions, 1)
+	require.Equal(t, "initial virtual key policy", revisions[0].Reason)
+}
+
+func TestAddTokenRequiresModelScopeWhenPolicyEnforcementIsEnabled(t *testing.T) {
+	setupTokenControllerTestDB(t)
+	t.Setenv("YANCHUANER_HASHED_KEYS_ENABLED", "true")
+	t.Setenv("YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED", "true")
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{
+		"name":            "unscoped-policy-agent",
+		"remain_quota":    1000,
+		"unlimited_quota": false,
+	}, 7)
+	AddToken(ctx)
+	require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
 }
 
 func TestAddTokenRejectsUnlimitedOrEmptyHashedKeyBudget(t *testing.T) {

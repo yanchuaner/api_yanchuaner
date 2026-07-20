@@ -31,6 +31,11 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 	return maskedTokens
 }
 
+type tokenCreateRequest struct {
+	model.Token
+	YanCorePolicy *model.YanCoreVirtualKeyPolicyConfig `json:"yancore_policy"`
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -172,12 +177,13 @@ func GetTokenUsage(c *gin.Context) {
 }
 
 func AddToken(c *gin.Context) {
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+	request := tokenCreateRequest{}
+	err := c.ShouldBindJSON(&request)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	token := request.Token
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
@@ -198,6 +204,13 @@ func AddToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Virtual keys require a positive finite budget.",
+		})
+		return
+	}
+	if hashedKeyEnabled && model.YanCoreVirtualKeyPolicyEnabled() && (!token.ModelLimitsEnabled || strings.TrimSpace(token.ModelLimits) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Virtual keys require an explicit model allowlist when YanCore policy enforcement is enabled.",
 		})
 		return
 	}
@@ -269,7 +282,17 @@ func AddToken(c *gin.Context) {
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
-	err = cleanToken.Insert()
+	var policy *model.YanCoreVirtualKeyPolicy
+	if hashedKeyEnabled && (model.YanCoreVirtualKeyPolicyEnabled() || request.YanCorePolicy != nil) {
+		policy, err = model.BuildYanCoreVirtualKeyPolicy(&cleanToken, request.YanCorePolicy)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		err = model.CreateYanCoreVirtualKeyWithPolicy(&cleanToken, policy, cleanToken.UserId, "initial virtual key policy")
+	} else {
+		err = cleanToken.Insert()
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -280,8 +303,9 @@ func AddToken(c *gin.Context) {
 	}
 	if hashedKeyEnabled {
 		response["data"] = gin.H{
-			"key":   oneTimeKey,
-			"token": buildMaskedTokenResponse(&cleanToken),
+			"key":    oneTimeKey,
+			"token":  buildMaskedTokenResponse(&cleanToken),
+			"policy": policy,
 		}
 	}
 	c.JSON(http.StatusOK, response)

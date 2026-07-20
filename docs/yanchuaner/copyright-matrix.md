@@ -27,10 +27,10 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 
 以下修改依据 New API 的 AGPLv3 授权进行，不是燕中对上游代码版权的取得：
 
-- `controller/oauth.go`、`controller/user.go`、`controller/token.go`、`controller/audit.go`、`controller/misc.go`
-- `middleware/auth.go`
+- `controller/oauth.go`、`controller/user.go`、`controller/token.go`、`controller/relay.go`、`controller/audit.go`、`controller/misc.go`
+- `middleware/auth.go`、`middleware/distributor.go`
 - `model/main.go`、`model/user.go`、`model/token.go`
-- `service/funding_source.go`、`service/billing_session.go`
+- `service/funding_source.go`、`service/billing_session.go`、`service/text_quota.go`
 - `router/api-router.go`
 - `Dockerfile`、`.dockerignore`
 - `oauth/*.go` 中已登记的日志脱敏修补
@@ -45,7 +45,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | --- | --- | --- |
 | 用户余额、Token 与用量日志的业务真值 | P0/P1 | 独立权益账户、不可变流水、哈希虚拟 Key 和审计服务 |
 | 管理员发放、活动和兑换码 | P1 | 自主活动模型、目标人群、领取次数、有效期和幂等兑换 |
-| 供应商/模型权益与每 Key 限流 | P1 | provider/model allowlist、RPM、TPM、并发和来源策略 |
+| 异步任务与完整 Key 策略归属 | P1 | 将已实现的 provider/RPM/TPM/并发扩展到异步任务，并把 model/预算/有效期/来源兼容投影移入自主事务 |
 | BYOK | P1 | 独立 Vault/Broker、信封加密、所有者绑定、脱敏管理和零明文日志 |
 | New API 用户端 | P1 | 自主控制台与 API，不继续扩展上游用户页面 |
 | New API 管理端/网关耦合 | P2 | 自主控制面通过协议调用可替换网关，完成双写和切流 |
@@ -62,6 +62,9 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `model/yanchuaner_subject_grant.go`、`controller/yanchuaner_subject_grant.go` 及测试 | 独立主体、应用、受众、scope、短期签名、撤销和防跨应用重放协议 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_subject_exchange.go` 及测试 | 独立主站令牌复验、服务客户端鉴权、可信 OAuth 绑定与固定 AI Web 策略 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_ai_session_key.go` 及测试 | 独立应用会话 Key 生命周期、并发会话指针、模型/预算边界、哈希存储与轮换策略 | 随仓库 AGPLv3-or-later |
+| `model/yanchuaner_virtual_key_policy.go` 及测试 | 独立 Key 策略、供应商推导、版本修订、历史回填和跨数据库事务设计 | 随仓库 AGPLv3-or-later |
+| `controller/yanchuaner_virtual_key_policy.go` | 独立的本人策略读取、带原因更新和修订查询接口 | 随仓库 AGPLv3-or-later |
+| `service/yanchuaner_virtual_key_policy.go`、`service/yanchuaner_virtual_key_limiter.go` 及测试 | 独立供应商复核、Redis/内存 RPM/TPM/并发预留结算和 fail-closed 语义 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_entitlement.go` 及测试 | 独立活动、哈希兑换码、用户权益、领取幂等、来源分账和权益流水 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_entitlement.go` | 独立活动创建、一次性兑换码发放、用户领取与权益查询接口 | 随仓库 AGPLv3-or-later |
 | `service/funding_source.go`、`service/billing_session.go` 相关 YanCore 路径 | 独立活动权益来源选择、预扣、结算、退款和兼容投影维护 | 随仓库 AGPLv3-or-later |

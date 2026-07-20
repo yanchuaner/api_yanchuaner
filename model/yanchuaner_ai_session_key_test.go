@@ -13,6 +13,7 @@ import (
 )
 
 func TestIssueAiWebSessionKeyRotatesAndStoresOnlyHash(t *testing.T) {
+	t.Setenv("YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED", "false")
 	previousDB := DB
 	db, err := gorm.Open(sqlite.Open("file:yancore_ai_session_key?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
@@ -56,6 +57,35 @@ func TestIssueAiWebSessionKeyRotatesAndStoresOnlyHash(t *testing.T) {
 	validated, err := ValidateUserToken(secondKey[3:])
 	require.NoError(t, err)
 	assert.Equal(t, second.Id, validated.Id)
+}
+
+func TestIssueAiWebSessionKeyCreatesPolicyAndRevisionWhenEnabled(t *testing.T) {
+	t.Setenv("YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED", "true")
+	previousDB := DB
+	db, err := gorm.Open(sqlite.Open("file:yancore_ai_session_policy?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() {
+		DB = previousDB
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&Token{}, &YanCoreApplicationSession{}, &YanCoreVirtualKeyPolicy{}, &YanCoreVirtualKeyPolicyRevision{}))
+
+	expiresAt := time.Now().Add(15 * time.Minute).Unix()
+	_, token, err := IssueAiWebSessionKey(7, 101, expiresAt, 50000, []string{"gpt-4.1-mini", "deepseek-chat"})
+	require.NoError(t, err)
+	policy, err := GetYanCoreVirtualKeyPolicy(token.Id, token.UserId)
+	require.NoError(t, err)
+	require.NotNil(t, policy)
+	assert.Equal(t, "deepseek,openai", policy.ProviderScope)
+	assert.Equal(t, YanCoreVirtualKeyPolicyActive, policy.Status)
+	revisions, err := ListYanCoreVirtualKeyPolicyRevisions(token.Id, token.UserId)
+	require.NoError(t, err)
+	require.Len(t, revisions, 1)
+	assert.Equal(t, "initial ai-web session policy", revisions[0].Reason)
 }
 
 func TestIssueAiWebSessionKeyRejectsUnboundedPolicy(t *testing.T) {
