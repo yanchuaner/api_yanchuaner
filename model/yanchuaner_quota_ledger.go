@@ -140,6 +140,21 @@ func applyQuotaLedgerChangeWithTx(tx *gorm.DB, change QuotaLedgerChange) (*Quota
 	if nextBalance > math.MaxInt32 {
 		return nil, ErrQuotaLedgerOutOfRange
 	}
+	if change.Amount < 0 && (change.FundingSource == QuotaFundingCampaign || change.FundingSource == QuotaFundingPublicBenefit) {
+		var sourceBalance int64
+		var err error
+		if change.FundingSource == QuotaFundingPublicBenefit {
+			sourceBalance, err = walletFundingBalanceWithTx(tx, change.UserId, user.Quota)
+		} else {
+			sourceBalance, err = quotaFundingBalanceWithTx(tx, change.UserId, change.FundingSource)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if sourceBalance+int64(change.Amount) < 0 {
+			return nil, ErrQuotaLedgerOverdraw
+		}
+	}
 
 	entry := &QuotaLedgerEntry{
 		UserId:         change.UserId,
@@ -161,6 +176,70 @@ func applyQuotaLedgerChangeWithTx(tx *gorm.DB, change QuotaLedgerChange) (*Quota
 		return nil, err
 	}
 	return entry, nil
+}
+
+func quotaFundingBalanceWithTx(tx *gorm.DB, userID int, fundingSource string) (int64, error) {
+	query := tx.Model(&QuotaLedgerEntry{}).Where("user_id = ?", userID)
+	if fundingSource == QuotaFundingPublicBenefit {
+		query = query.Where("funding_source IN ?", []string{QuotaFundingPublicBenefit, QuotaFundingLegacy})
+	} else {
+		query = query.Where("funding_source = ?", fundingSource)
+	}
+	var balance int64
+	if err := query.Select("COALESCE(SUM(amount), 0)").Scan(&balance).Error; err != nil {
+		return 0, err
+	}
+	return balance, nil
+}
+
+// walletFundingBalanceWithTx includes untracked legacy balance while excluding
+// separately tracked campaign funds. Once an opening entry exists, the
+// untracked component naturally becomes zero.
+func walletFundingBalanceWithTx(tx *gorm.DB, userID, userQuota int) (int64, error) {
+	publicBalance, err := quotaFundingBalanceWithTx(tx, userID, QuotaFundingPublicBenefit)
+	if err != nil {
+		return 0, err
+	}
+	var trackedBalance int64
+	if err := tx.Model(&QuotaLedgerEntry{}).Where("user_id = ?", userID).Select("COALESCE(SUM(amount), 0)").Scan(&trackedBalance).Error; err != nil {
+		return 0, err
+	}
+	return publicBalance + int64(userQuota) - trackedBalance, nil
+}
+
+// GetWalletFundingBalance returns spendable public-benefit and legacy quota.
+// Campaign funds are excluded even though users.quota remains an aggregate
+// compatibility projection.
+func GetWalletFundingBalance(userID int) (int, error) {
+	if userID <= 0 {
+		return 0, errors.New("quota ledger user id is required")
+	}
+	var balance int64
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id", "quota").First(&user, userID).Error; err != nil {
+			return err
+		}
+		var err error
+		balance, err = walletFundingBalanceWithTx(tx, userID, user.Quota)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	if balance > math.MaxInt32 || balance < -math.MaxInt32 {
+		return 0, ErrQuotaLedgerOutOfRange
+	}
+	return int(balance), nil
+}
+
+// GetQuotaLedgerBalanceByFundingSource returns the append-only balance for a
+// source. Public benefit includes pre-ledger legacy opening balances.
+func GetQuotaLedgerBalanceByFundingSource(userID int, fundingSource string) (int64, error) {
+	if userID <= 0 || strings.TrimSpace(fundingSource) == "" {
+		return 0, errors.New("quota ledger funding source is required")
+	}
+	return quotaFundingBalanceWithTx(DB, userID, fundingSource)
 }
 
 // ApplyQuotaLedgerChange atomically appends a ledger entry and updates the

@@ -8,12 +8,12 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// FundingSource — 资金来源接口（钱包 or 订阅）
+// FundingSource — 资金来源接口（钱包、订阅或活动权益）
 // ---------------------------------------------------------------------------
 
 // FundingSource 抽象了预扣费的资金来源。
 type FundingSource interface {
-	// Source 返回资金来源标识："wallet" 或 "subscription"
+	// Source 返回资金来源标识："wallet"、"subscription" 或 "campaign"
 	Source() string
 	// PreConsume 从该资金来源预扣 amount 额度
 	PreConsume(amount int) error
@@ -33,6 +33,81 @@ type WalletFunding struct {
 	requestId string
 	consumed  int // 实际预扣的用户额度
 	sequence  int
+}
+
+// YanCoreEntitlementFunding consumes a matched YanCore campaign entitlement.
+// It never falls back to the wallet after a matching entitlement is selected.
+type YanCoreEntitlementFunding struct {
+	userId        int
+	tokenId       int
+	requestId     string
+	entitlementId int64
+	consumed      int
+	sequence      int
+}
+
+func (f *YanCoreEntitlementFunding) Source() string { return BillingSourceCampaign }
+
+func (f *YanCoreEntitlementFunding) PreConsume(amount int) error {
+	if amount <= 0 {
+		return nil
+	}
+	if err := f.applyChange(-amount, model.YanCoreEntitlementLedgerReserve, "preconsume", "YanCore campaign entitlement reserve"); err != nil {
+		return err
+	}
+	f.consumed = amount
+	return nil
+}
+
+func (f *YanCoreEntitlementFunding) Settle(delta int) error {
+	if delta == 0 {
+		return nil
+	}
+	return f.applyChange(-delta, model.YanCoreEntitlementLedgerSettlement, "settlement", "YanCore campaign entitlement settlement")
+}
+
+func (f *YanCoreEntitlementFunding) Refund() error {
+	if f.consumed <= 0 {
+		return nil
+	}
+	return f.applyChange(f.consumed, model.YanCoreEntitlementLedgerRefund, "refund", "YanCore campaign entitlement refund")
+}
+
+func (f *YanCoreEntitlementFunding) reserve(delta int) error {
+	if delta <= 0 {
+		return nil
+	}
+	f.sequence++
+	if err := f.applyChange(-delta, model.YanCoreEntitlementLedgerReserve, fmt.Sprintf("reserve:%d", f.sequence), "additional YanCore campaign entitlement reserve"); err != nil {
+		return err
+	}
+	f.consumed += delta
+	return nil
+}
+
+func (f *YanCoreEntitlementFunding) rollbackReserve(delta int) error {
+	if delta <= 0 {
+		return nil
+	}
+	if err := f.applyChange(delta, model.YanCoreEntitlementLedgerRefund, fmt.Sprintf("reserve-rollback:%d", f.sequence), "additional YanCore campaign reserve rollback"); err != nil {
+		return err
+	}
+	f.consumed -= delta
+	return nil
+}
+
+func (f *YanCoreEntitlementFunding) applyChange(amount int, entryType, phase, reason string) error {
+	_, err := model.ApplyYanCoreEntitlementChange(model.YanCoreEntitlementChange{
+		EntitlementId:  f.entitlementId,
+		UserId:         f.userId,
+		TokenId:        f.tokenId,
+		RequestId:      f.requestId,
+		IdempotencyKey: fmt.Sprintf("request:%s:campaign:%d:%s", f.requestId, f.entitlementId, phase),
+		EntryType:      entryType,
+		Amount:         amount,
+		Reason:         reason,
+	})
+	return err
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
@@ -90,7 +165,7 @@ func (w *WalletFunding) rollbackReserve(delta int) error {
 }
 
 func (w *WalletFunding) applyChange(amount int, entryType string, phase string, reason string) error {
-	if !model.QuotaLedgerEnabled() {
+	if !model.QuotaLedgerEnabled() && !yanCoreCampaignFundingEnabled() {
 		if amount > 0 {
 			return model.IncreaseUserQuota(w.userId, amount, false)
 		}

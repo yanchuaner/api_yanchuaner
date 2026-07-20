@@ -64,6 +64,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `model/yanchuaner_ai_session_key.go` 及测试 | 独立应用会话 Key 生命周期、并发会话指针、模型/预算边界、哈希存储与轮换策略 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_entitlement.go` 及测试 | 独立活动、哈希兑换码、用户权益、领取幂等、来源分账和权益流水 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_entitlement.go` | 独立活动创建、一次性兑换码发放、用户领取与权益查询接口 | 随仓库 AGPLv3-or-later |
+| `service/funding_source.go`、`service/billing_session.go` 相关 YanCore 路径 | 独立活动权益来源选择、预扣、结算、退款和兼容投影维护 | 随仓库 AGPLv3-or-later |
 | `docs/yanchuaner/**` | 燕中需求、架构、验收、迁移和来源设计 | 作者版权；仓库分发条件待运营主体/贡献政策确认 |
 | `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1` | 燕中部署边界与密钥生成流程 | 作者版权；不得包含生产秘密 |
 

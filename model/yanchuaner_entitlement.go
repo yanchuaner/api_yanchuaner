@@ -20,24 +20,31 @@ import (
 )
 
 const (
-	YanCoreCampaignStatusEnabled      = "enabled"
-	YanCoreCampaignStatusDisabled     = "disabled"
-	YanCoreEntitlementSourceCampaign  = "campaign"
-	YanCoreEntitlementStatusActive    = "active"
-	YanCoreEntitlementStatusExhausted = "exhausted"
-	YanCoreEntitlementStatusExpired   = "expired"
-	YanCoreEntitlementLedgerGrant     = "grant"
+	YanCoreCampaignStatusEnabled       = "enabled"
+	YanCoreCampaignStatusDisabled      = "disabled"
+	YanCoreEntitlementSourceCampaign   = "campaign"
+	YanCoreEntitlementStatusActive     = "active"
+	YanCoreEntitlementStatusExhausted  = "exhausted"
+	YanCoreEntitlementStatusExpired    = "expired"
+	YanCoreEntitlementLedgerGrant      = "grant"
+	YanCoreEntitlementLedgerReserve    = "reserve"
+	YanCoreEntitlementLedgerSettlement = "settlement"
+	YanCoreEntitlementLedgerRefund     = "refund"
 )
 
 var (
-	ErrYanCoreCampaignInvalid     = errors.New("yancore campaign is invalid")
-	ErrYanCoreCampaignExpired     = errors.New("yancore campaign is expired")
-	ErrYanCoreCampaignExhausted   = errors.New("yancore campaign claim limit reached")
-	ErrYanCoreRedeemCodeInvalid   = errors.New("yancore redeem code is invalid")
-	ErrYanCoreRedeemCodeExpired   = errors.New("yancore redeem code is expired")
-	ErrYanCoreRedeemCodeExhausted = errors.New("yancore redeem code claim limit reached")
-	ErrYanCoreEntitlementTarget   = errors.New("yancore entitlement target is invalid")
-	ErrYanCoreEntitlementReplayed = errors.New("yancore entitlement already claimed")
+	ErrYanCoreCampaignInvalid         = errors.New("yancore campaign is invalid")
+	ErrYanCoreCampaignExpired         = errors.New("yancore campaign is expired")
+	ErrYanCoreCampaignExhausted       = errors.New("yancore campaign claim limit reached")
+	ErrYanCoreRedeemCodeInvalid       = errors.New("yancore redeem code is invalid")
+	ErrYanCoreRedeemCodeExpired       = errors.New("yancore redeem code is expired")
+	ErrYanCoreRedeemCodeExhausted     = errors.New("yancore redeem code claim limit reached")
+	ErrYanCoreEntitlementTarget       = errors.New("yancore entitlement target is invalid")
+	ErrYanCoreEntitlementReplayed     = errors.New("yancore entitlement already claimed")
+	ErrYanCoreEntitlementNotFound     = errors.New("no matching yancore entitlement")
+	ErrYanCoreEntitlementInsufficient = errors.New("yancore entitlement quota is insufficient")
+	ErrYanCoreEntitlementConflict     = errors.New("yancore entitlement idempotency conflict")
+	ErrYanCoreEntitlementOutOfRange   = errors.New("yancore entitlement balance is out of range")
 )
 
 // YanCoreCampaign is the policy container for a separately accounted benefit.
@@ -102,6 +109,7 @@ type YanCoreEntitlementLedgerEntry struct {
 	Id             int64  `json:"id"`
 	EntitlementId  int64  `json:"entitlement_id" gorm:"index;not null"`
 	UserId         int    `json:"user_id" gorm:"index;not null"`
+	RequestId      string `json:"request_id" gorm:"type:varchar(64);index;not null;default:''"`
 	EntryType      string `json:"entry_type" gorm:"type:varchar(32);index;not null"`
 	Amount         int    `json:"amount" gorm:"not null"`
 	BalanceAfter   int    `json:"balance_after" gorm:"not null"`
@@ -274,4 +282,148 @@ func ListYanCoreEntitlements(userID int) ([]*YanCoreEntitlement, error) {
 	var entitlements []*YanCoreEntitlement
 	err := DB.Where("user_id = ?", userID).Order("id desc").Limit(100).Find(&entitlements).Error
 	return entitlements, err
+}
+
+type YanCoreEntitlementChange struct {
+	EntitlementId  int64
+	UserId         int
+	TokenId        int
+	RequestId      string
+	IdempotencyKey string
+	EntryType      string
+	Amount         int
+	Reason         string
+	Metadata       string
+}
+
+func entitlementScopeMatches(scope, value string) bool {
+	scope = strings.TrimSpace(scope)
+	if scope == "" || scope == "*" {
+		return true
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+	}
+	for _, candidate := range strings.FieldsFunc(scope, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+	}) {
+		if strings.ToLower(strings.TrimSpace(candidate)) == value {
+			return true
+		}
+	}
+	return false
+}
+
+func FindYanCoreEntitlement(userID int, provider, modelName string, amount int) (*YanCoreEntitlement, error) {
+	if userID <= 0 || amount <= 0 {
+		return nil, ErrYanCoreEntitlementNotFound
+	}
+	var entitlements []*YanCoreEntitlement
+	if err := DB.Where("user_id = ? AND status = ? AND expires_at > ?", userID, YanCoreEntitlementStatusActive, time.Now().Unix()).Order("expires_at asc, id asc").Find(&entitlements).Error; err != nil {
+		return nil, err
+	}
+	matchedInsufficient := false
+	for _, entitlement := range entitlements {
+		if entitlementScopeMatches(entitlement.ProviderScope, provider) && entitlementScopeMatches(entitlement.ModelScope, modelName) {
+			if entitlement.RemainingQuota < amount {
+				matchedInsufficient = true
+				continue
+			}
+			return entitlement, nil
+		}
+	}
+	if matchedInsufficient {
+		return nil, ErrYanCoreEntitlementInsufficient
+	}
+	return nil, ErrYanCoreEntitlementNotFound
+}
+
+func validateYanCoreEntitlementChange(change YanCoreEntitlementChange) error {
+	if change.EntitlementId <= 0 || change.UserId <= 0 || change.Amount == 0 || strings.TrimSpace(change.IdempotencyKey) == "" || len(change.IdempotencyKey) > 160 || strings.TrimSpace(change.EntryType) == "" || len(change.EntryType) > 32 {
+		return ErrYanCoreEntitlementConflict
+	}
+	if len(change.RequestId) > 64 || len(change.Reason) > 255 {
+		return ErrYanCoreEntitlementConflict
+	}
+	return nil
+}
+
+func ApplyYanCoreEntitlementChange(change YanCoreEntitlementChange) (*YanCoreEntitlementLedgerEntry, error) {
+	if err := validateYanCoreEntitlementChange(change); err != nil {
+		return nil, err
+	}
+	var ledgerEntry *YanCoreEntitlementLedgerEntry
+	userBalance := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var entitlement YanCoreEntitlement
+		if err := lockForUpdate(tx).First(&entitlement, change.EntitlementId).Error; err != nil {
+			return ErrYanCoreEntitlementNotFound
+		}
+		if entitlement.UserId != change.UserId {
+			return ErrYanCoreEntitlementTarget
+		}
+		metadata := change.Metadata
+		if metadata == "" {
+			metadataBytes, err := common.Marshal(map[string]any{"entitlement_id": entitlement.Id, "source": entitlement.Source})
+			if err != nil {
+				return err
+			}
+			metadata = string(metadataBytes)
+		}
+		var existing YanCoreEntitlementLedgerEntry
+		if err := tx.Where("idempotency_key = ?", change.IdempotencyKey).First(&existing).Error; err == nil {
+			if existing.EntitlementId != change.EntitlementId || existing.UserId != change.UserId || existing.RequestId != change.RequestId || existing.Amount != change.Amount || existing.EntryType != change.EntryType || existing.Metadata != metadata {
+				return ErrYanCoreEntitlementConflict
+			}
+			var user User
+			if err := tx.Select("id", "quota").First(&user, change.UserId).Error; err != nil {
+				return err
+			}
+			userBalance = user.Quota
+			ledgerEntry = &existing
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		nextBalance := int64(entitlement.RemainingQuota) + int64(change.Amount)
+		if nextBalance < 0 {
+			return ErrYanCoreEntitlementInsufficient
+		}
+		if nextBalance > int64(entitlement.GrantedQuota) {
+			return ErrYanCoreEntitlementOutOfRange
+		}
+		if entitlement.Status != YanCoreEntitlementStatusActive && change.Amount < 0 {
+			return ErrYanCoreEntitlementInsufficient
+		}
+		now := time.Now().Unix()
+		if change.Amount < 0 && entitlement.ExpiresAt <= now {
+			return ErrYanCoreCampaignExpired
+		}
+		quotaEntry, err := applyQuotaLedgerChangeWithTx(tx, QuotaLedgerChange{UserId: change.UserId, TokenId: change.TokenId, RequestId: change.RequestId, IdempotencyKey: change.IdempotencyKey + ":quota", EntryType: change.EntryType, FundingSource: QuotaFundingCampaign, Amount: change.Amount, Reason: change.Reason, Metadata: metadata})
+		if err != nil {
+			return err
+		}
+		userBalance = quotaEntry.BalanceAfter
+		status := entitlement.Status
+		if entitlement.ExpiresAt <= now {
+			status = YanCoreEntitlementStatusExpired
+		} else if nextBalance == 0 {
+			status = YanCoreEntitlementStatusExhausted
+		} else if change.Amount > 0 {
+			status = YanCoreEntitlementStatusActive
+		}
+		if err := tx.Model(&YanCoreEntitlement{}).Where("id = ?", entitlement.Id).Updates(map[string]any{"remaining_quota": int(nextBalance), "status": status}).Error; err != nil {
+			return err
+		}
+		ledgerEntry = &YanCoreEntitlementLedgerEntry{EntitlementId: entitlement.Id, UserId: change.UserId, RequestId: change.RequestId, EntryType: change.EntryType, Amount: change.Amount, BalanceAfter: int(nextBalance), IdempotencyKey: change.IdempotencyKey, Metadata: metadata}
+		return tx.Create(ledgerEntry).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := updateUserQuotaCache(change.UserId, userBalance); err != nil {
+		common.SysLog(fmt.Sprintf("failed to update quota cache after entitlement entry %d: %s", ledgerEntry.Id, err.Error()))
+	}
+	return ledgerEntry, nil
 }

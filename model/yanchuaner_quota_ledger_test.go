@@ -128,6 +128,37 @@ func TestQuotaLedgerRejectsOverdrawAndConflictingReplay(t *testing.T) {
 	assert.Equal(t, 10, reloaded.Quota)
 }
 
+func TestWalletFundingBalanceExcludesCampaignQuota(t *testing.T) {
+	truncateTables(t)
+	user := &User{Username: "ledger-source-isolation", Password: "password", Status: common.UserStatusEnabled, Quota: 100}
+	require.NoError(t, DB.Create(user).Error)
+
+	_, err := ApplyQuotaLedgerChange(QuotaLedgerChange{
+		UserId:         user.Id,
+		IdempotencyKey: "campaign-isolation:grant",
+		EntryType:      QuotaLedgerTypeGrant,
+		FundingSource:  QuotaFundingCampaign,
+		Amount:         50,
+	})
+	require.NoError(t, err)
+
+	walletBalance, err := GetWalletFundingBalance(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 100, walletBalance)
+	_, err = ApplyQuotaLedgerChange(QuotaLedgerChange{
+		UserId:         user.Id,
+		IdempotencyKey: "campaign-isolation:wallet-overdraw",
+		EntryType:      QuotaLedgerTypeReserve,
+		FundingSource:  QuotaFundingPublicBenefit,
+		Amount:         -101,
+	})
+	assert.ErrorIs(t, err, ErrQuotaLedgerOverdraw)
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 150, reloaded.Quota)
+}
+
 func TestQuotaLedgerRejectsOutOfRangeAmountBeforeArithmetic(t *testing.T) {
 	truncateTables(t)
 	user := &User{Username: "ledger-range", Password: "password", Status: common.UserStatusEnabled, Quota: 20}
