@@ -8,6 +8,7 @@ package model
 
 import (
 	"errors"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ type YanCoreVirtualKeyPolicyRevision struct {
 	ProviderScope  string `json:"provider_scope" gorm:"type:text;not null"`
 	ModelScope     string `json:"model_scope" gorm:"type:text;not null"`
 	SourceScope    string `json:"source_scope" gorm:"type:text;not null"`
+	BudgetQuota    int    `json:"budget_quota" gorm:"not null"`
+	ExpiresAt      int64  `json:"expires_at" gorm:"not null"`
+	TokenStatus    int    `json:"token_status" gorm:"not null"`
 	MaxRPM         int    `json:"max_rpm" gorm:"not null"`
 	MaxTPM         int    `json:"max_tpm" gorm:"not null"`
 	MaxConcurrency int    `json:"max_concurrency" gorm:"not null"`
@@ -70,12 +74,27 @@ type YanCoreVirtualKeyPolicyRevision struct {
 // YanCoreVirtualKeyPolicyConfig is used by user-facing policy APIs and token
 // creation. Providers are normalized to lower-case exact names.
 type YanCoreVirtualKeyPolicyConfig struct {
-	Providers      []string `json:"providers"`
-	MaxRPM         int      `json:"max_rpm"`
-	MaxTPM         int      `json:"max_tpm"`
-	MaxConcurrency int      `json:"max_concurrency"`
-	Status         string   `json:"status"`
-	Reason         string   `json:"reason"`
+	Providers      []string                      `json:"providers"`
+	MaxRPM         int                           `json:"max_rpm"`
+	MaxTPM         int                           `json:"max_tpm"`
+	MaxConcurrency int                           `json:"max_concurrency"`
+	Status         string                        `json:"status"`
+	Reason         string                        `json:"reason"`
+	Token          *YanCoreVirtualKeyTokenUpdate `json:"token,omitempty"`
+}
+
+// YanCoreVirtualKeyTokenUpdate contains the compatibility fields that still
+// live on Token during stage B. Pointer fields preserve partial-update
+// semantics while allowing explicit zero/false values where valid.
+type YanCoreVirtualKeyTokenUpdate struct {
+	Name            *string   `json:"name,omitempty"`
+	RemainQuota     *int      `json:"remain_quota,omitempty"`
+	ExpiredTime     *int64    `json:"expired_time,omitempty"`
+	Models          *[]string `json:"models,omitempty"`
+	AllowIPs        *string   `json:"allow_ips,omitempty"`
+	Group           *string   `json:"group,omitempty"`
+	CrossGroupRetry *bool     `json:"cross_group_retry,omitempty"`
+	Status          *int      `json:"status,omitempty"`
 }
 
 func YanCoreVirtualKeyPolicyEnabled() bool {
@@ -149,6 +168,153 @@ func inferYanCoreProvidersFromToken(token *Token) ([]string, error) {
 	return result, nil
 }
 
+func normalizeYanCoreVirtualKeyModels(models []string) (string, error) {
+	if len(models) == 0 || len(models) > 32 {
+		return "", ErrYanCoreVirtualKeyPolicyModelRequired
+	}
+	seen := make(map[string]struct{}, len(models))
+	normalized := make([]string, 0, len(models))
+	for _, candidate := range models {
+		modelName := strings.TrimSpace(candidate)
+		if modelName == "" || len(modelName) > 128 || strings.ContainsAny(modelName, ",\r\n\t") {
+			return "", ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		if _, exists := seen[modelName]; exists {
+			continue
+		}
+		seen[modelName] = struct{}{}
+		normalized = append(normalized, modelName)
+	}
+	if len(normalized) == 0 {
+		return "", ErrYanCoreVirtualKeyPolicyModelRequired
+	}
+	sort.Strings(normalized)
+	return strings.Join(normalized, ","), nil
+}
+
+func normalizeYanCoreVirtualKeyIPs(raw string) (string, error) {
+	items := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+	})
+	if len(items) > 64 {
+		return "", ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	seen := make(map[string]struct{}, len(items))
+	normalized := make([]string, 0, len(items))
+	for _, candidate := range items {
+		candidate = strings.TrimSpace(candidate)
+		var value string
+		if strings.Contains(candidate, "/") {
+			_, network, err := net.ParseCIDR(candidate)
+			if err != nil {
+				return "", ErrYanCoreVirtualKeyPolicyInvalid
+			}
+			value = network.String()
+		} else {
+			ip := net.ParseIP(candidate)
+			if ip == nil {
+				return "", ErrYanCoreVirtualKeyPolicyInvalid
+			}
+			value = ip.String()
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	sort.Strings(normalized)
+	return strings.Join(normalized, "\n"), nil
+}
+
+func normalizeYanCoreVirtualKeyTokenForPolicy(token *Token) error {
+	if token == nil || token.UserId <= 0 || !token.KeyHashEnabled || token.UnlimitedQuota || token.RemainQuota <= 0 || !token.ModelLimitsEnabled {
+		return ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	models := strings.FieldsFunc(token.ModelLimits, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+	})
+	modelScope, err := normalizeYanCoreVirtualKeyModels(models)
+	if err != nil {
+		return err
+	}
+	token.ModelLimits = modelScope
+	if token.AllowIps != nil {
+		allowIPs, err := normalizeYanCoreVirtualKeyIPs(*token.AllowIps)
+		if err != nil {
+			return err
+		}
+		token.AllowIps = &allowIPs
+	}
+	if token.ExpiredTime == 0 {
+		token.ExpiredTime = -1
+	}
+	if token.ExpiredTime != -1 && token.ExpiredTime <= time.Now().Unix() {
+		return ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	if token.Status == 0 {
+		token.Status = common.TokenStatusEnabled
+	}
+	return nil
+}
+
+func applyYanCoreVirtualKeyTokenUpdate(token *Token, update *YanCoreVirtualKeyTokenUpdate) error {
+	if update == nil {
+		return nil
+	}
+	if update.Name != nil {
+		name := strings.TrimSpace(*update.Name)
+		if name == "" || len(name) > 50 || IsReservedYanCoreTokenName(name) {
+			return ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		token.Name = name
+	}
+	if update.RemainQuota != nil {
+		if *update.RemainQuota <= 0 || *update.RemainQuota > int(1000000000*common.QuotaPerUnit) {
+			return ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		token.RemainQuota = *update.RemainQuota
+		token.UnlimitedQuota = false
+	}
+	if update.ExpiredTime != nil {
+		if *update.ExpiredTime != -1 && *update.ExpiredTime <= time.Now().Unix() {
+			return ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		token.ExpiredTime = *update.ExpiredTime
+	}
+	if update.Models != nil {
+		modelScope, err := normalizeYanCoreVirtualKeyModels(*update.Models)
+		if err != nil {
+			return err
+		}
+		token.ModelLimitsEnabled = true
+		token.ModelLimits = modelScope
+	}
+	if update.AllowIPs != nil {
+		allowIPs, err := normalizeYanCoreVirtualKeyIPs(*update.AllowIPs)
+		if err != nil {
+			return err
+		}
+		token.AllowIps = &allowIPs
+	}
+	if update.Group != nil {
+		token.Group = strings.TrimSpace(*update.Group)
+	}
+	if update.CrossGroupRetry != nil {
+		token.CrossGroupRetry = *update.CrossGroupRetry
+	}
+	if update.Status != nil {
+		if *update.Status != common.TokenStatusEnabled && *update.Status != common.TokenStatusDisabled {
+			return ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		token.Status = *update.Status
+	}
+	if !token.KeyHashEnabled || token.UnlimitedQuota || token.RemainQuota <= 0 || !token.ModelLimitsEnabled {
+		return ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	return nil
+}
+
 func validateYanCoreVirtualKeyPolicy(policy *YanCoreVirtualKeyPolicy) error {
 	if policy == nil || policy.TokenId < 0 || policy.UserId <= 0 || strings.TrimSpace(policy.ProviderScope) == "" ||
 		policy.MaxRPM < 0 || policy.MaxTPM < 0 || policy.MaxConcurrency < 0 ||
@@ -174,6 +340,9 @@ func validatePersistedYanCoreVirtualKeyPolicy(policy *YanCoreVirtualKeyPolicy) e
 func BuildYanCoreVirtualKeyPolicy(token *Token, config *YanCoreVirtualKeyPolicyConfig) (*YanCoreVirtualKeyPolicy, error) {
 	if token == nil || token.UserId <= 0 || !token.KeyHashEnabled {
 		return nil, ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	if err := normalizeYanCoreVirtualKeyTokenForPolicy(token); err != nil {
+		return nil, err
 	}
 	if config == nil {
 		config = &YanCoreVirtualKeyPolicyConfig{}
@@ -233,7 +402,7 @@ func createYanCoreVirtualKeyPolicyRevisionWithTx(tx *gorm.DB, policy *YanCoreVir
 	if strings.TrimSpace(reason) == "" || len(reason) > 255 || policy == nil || token == nil {
 		return ErrYanCoreVirtualKeyPolicyInvalid
 	}
-	return tx.Create(&YanCoreVirtualKeyPolicyRevision{PolicyId: policy.Id, TokenId: policy.TokenId, UserId: policy.UserId, ActorUserId: actorUserID, Version: policy.Version, ProviderScope: policy.ProviderScope, ModelScope: token.ModelLimits, SourceScope: token.GetIpLimitsString(), MaxRPM: policy.MaxRPM, MaxTPM: policy.MaxTPM, MaxConcurrency: policy.MaxConcurrency, Status: policy.Status, Reason: reason}).Error
+	return tx.Create(&YanCoreVirtualKeyPolicyRevision{PolicyId: policy.Id, TokenId: policy.TokenId, UserId: policy.UserId, ActorUserId: actorUserID, Version: policy.Version, ProviderScope: policy.ProviderScope, ModelScope: token.ModelLimits, SourceScope: token.GetIpLimitsString(), BudgetQuota: token.RemainQuota, ExpiresAt: token.ExpiredTime, TokenStatus: token.Status, MaxRPM: policy.MaxRPM, MaxTPM: policy.MaxTPM, MaxConcurrency: policy.MaxConcurrency, Status: policy.Status, Reason: reason}).Error
 }
 
 // GetIpLimitsString returns the compatibility source projection for audits.
@@ -291,12 +460,17 @@ func UpdateYanCoreVirtualKeyPolicy(tokenID, userID, actorUserID int, config YanC
 		return nil, ErrYanCoreVirtualKeyPolicyInvalid
 	}
 	var updated *YanCoreVirtualKeyPolicy
+	var tokenUpdated bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var token Token
 		if err := lockForUpdate(tx).Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrYanCoreVirtualKeyPolicyNotFound
 			}
+			return err
+		}
+		originalTokenStatus := token.Status
+		if err := applyYanCoreVirtualKeyTokenUpdate(&token, config.Token); err != nil {
 			return err
 		}
 		var policy YanCoreVirtualKeyPolicy
@@ -306,15 +480,19 @@ func UpdateYanCoreVirtualKeyPolicy(tokenID, userID, actorUserID int, config YanC
 			}
 			return err
 		}
-		providers := config.Providers
-		if len(providers) == 0 {
-			providers = strings.Split(policy.ProviderScope, ",")
-		}
-		providerScope, err := normalizeYanCoreProviderScope(providers)
+		requiredProviders, err := inferYanCoreProvidersFromToken(&token)
 		if err != nil {
 			return err
 		}
-		requiredProviders, err := inferYanCoreProvidersFromToken(&token)
+		providers := config.Providers
+		if len(providers) == 0 {
+			if config.Token != nil && config.Token.Models != nil {
+				providers = requiredProviders
+			} else {
+				providers = strings.Split(policy.ProviderScope, ",")
+			}
+		}
+		providerScope, err := normalizeYanCoreProviderScope(providers)
 		if err != nil {
 			return err
 		}
@@ -332,8 +510,25 @@ func UpdateYanCoreVirtualKeyPolicy(tokenID, userID, actorUserID int, config YanC
 		if config.MaxConcurrency == 0 {
 			config.MaxConcurrency = policy.MaxConcurrency
 		}
-		if config.Status == "" {
+		statusProvided := config.Status != ""
+		if !statusProvided {
 			config.Status = policy.Status
+		}
+		if config.Token != nil && config.Token.Status != nil {
+			expectedPolicyStatus := YanCoreVirtualKeyPolicyActive
+			if token.Status == common.TokenStatusDisabled {
+				expectedPolicyStatus = YanCoreVirtualKeyPolicyDisabled
+			}
+			if statusProvided && config.Status != expectedPolicyStatus {
+				return ErrYanCoreVirtualKeyPolicyInvalid
+			}
+			config.Status = expectedPolicyStatus
+		} else if token.Status != policyTokenStatus(config.Status) && config.Status == policy.Status {
+			return ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		token.Status = policyTokenStatus(config.Status)
+		if token.Status == common.TokenStatusEnabled && (token.RemainQuota <= 0 || (token.ExpiredTime > 0 && token.ExpiredTime <= time.Now().Unix())) {
+			return ErrYanCoreVirtualKeyPolicyInvalid
 		}
 		candidate := policy
 		candidate.ProviderScope = providerScope
@@ -346,6 +541,17 @@ func UpdateYanCoreVirtualKeyPolicy(tokenID, userID, actorUserID int, config YanC
 		if err := validatePersistedYanCoreVirtualKeyPolicy(&candidate); err != nil {
 			return err
 		}
+		if config.Token != nil || token.Status != originalTokenStatus {
+			if err := tx.Model(&Token{}).Where("id = ? AND user_id = ?", token.Id, token.UserId).Updates(map[string]any{
+				"name": token.Name, "status": token.Status, "expired_time": token.ExpiredTime,
+				"remain_quota": token.RemainQuota, "unlimited_quota": false,
+				"model_limits_enabled": token.ModelLimitsEnabled, "model_limits": token.ModelLimits,
+				"allow_ips": token.AllowIps, "group": token.Group, "cross_group_retry": token.CrossGroupRetry,
+			}).Error; err != nil {
+				return err
+			}
+			tokenUpdated = true
+		}
 		if err := tx.Model(&YanCoreVirtualKeyPolicy{}).Where("id = ?", policy.Id).Updates(map[string]any{"provider_scope": candidate.ProviderScope, "max_rpm": candidate.MaxRPM, "max_tpm": candidate.MaxTPM, "max_concurrency": candidate.MaxConcurrency, "status": candidate.Status, "version": candidate.Version, "updated_at": candidate.UpdatedAt}).Error; err != nil {
 			return err
 		}
@@ -355,7 +561,19 @@ func UpdateYanCoreVirtualKeyPolicy(tokenID, userID, actorUserID int, config YanC
 		updated = &candidate
 		return nil
 	})
+	if err == nil && tokenUpdated {
+		if cacheErr := InvalidateUserTokensCache(userID); cacheErr != nil {
+			common.SysLog("failed to invalidate virtual key cache after policy update: " + cacheErr.Error())
+		}
+	}
 	return updated, err
+}
+
+func policyTokenStatus(status string) int {
+	if status == YanCoreVirtualKeyPolicyDisabled {
+		return common.TokenStatusDisabled
+	}
+	return common.TokenStatusEnabled
 }
 
 func ListYanCoreVirtualKeyPolicyRevisions(tokenID, userID int) ([]*YanCoreVirtualKeyPolicyRevision, error) {

@@ -354,6 +354,13 @@ func UpdateToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if cleanToken.KeyHashEnabled && model.YanCoreVirtualKeyPolicyEnabled() {
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": "Policy-managed virtual keys must be updated through the YanCore policy endpoint.",
+		})
+		return
+	}
 	if statusOnly == "" && cleanToken.KeyHashEnabled && (token.UnlimitedQuota || token.RemainQuota <= 0) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,

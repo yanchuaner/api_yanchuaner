@@ -70,7 +70,7 @@ flowchart LR
 | P0 | 许可仍待法律与运营确认 | `ai_yanchuaner` 已补仓库许可状态、第三方许可全文、来源矩阵和安全/贡献流程；运营主体、自主代码最终许可证、Open WebUI 法律声明页和品牌授权仍须人工确认。 |
 | P1 | 每 Key 限流尚未覆盖异步任务 | 标准同步文本 Relay 已实现 Redis 原子 RPM/TPM/并发与故障 fail-closed；异步任务目前只复核供应商，开放 Agent 异步能力前必须持久化预留并补退款语义。 |
 | P1 | 权益来源仍在扩展 | 活动和兑换码已接入独立 YanCore 表、`campaign` funding source、来源隔离及可开关的同步预扣/结算/退款；异步任务、目标人群、管理员 UI、每 Key 来源策略和 BYOK 尚未完成，开关默认关闭。 |
-| P1 | Key 策略仍有兼容投影 | 独立 provider allowlist 与选路后复核已实现；模型、来源 IP、预算和有效期仍在 New API Token，旧更新接口不会追加 YanCore 修订，阶段 C 必须迁入自主事务。 |
+| P1 | Key 策略仍有兼容存储 | 独立 provider allowlist、协议门禁与选路后复核已实现；模型、来源 IP、预算和有效期仍在 New API Token 列，但写入已由 YanCore 单事务和不可变修订接管，阶段 C 仍须迁出上游表。 |
 | P1 | Redis 许可证 | `7.4.9` 为 RSALv2/SSPLv1 双许可。只允许作为不暴露给用户的内部缓存；禁止把 Redis 功能本身作为服务提供。 |
 | P2 | 上游共享状态测试失败 | 未修改基线也会出现 `channel_affinity_usage_cache_test` 计数污染。应修复测试隔离，但不阻塞本轮新增行为的定向测试。 |
 | P2 | 本地前端依赖布局易混用 | 同一 Windows `node_modules` 无法同时代表 default 与 classic 的发布安装。发布以 Dockerfile 的隔离阶段为准，详见 `dependency-baseline.md`。 |

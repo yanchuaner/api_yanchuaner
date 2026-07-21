@@ -9,6 +9,7 @@ package model
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
@@ -49,6 +50,99 @@ func TestYanCoreVirtualKeyPolicyCreationUpdateAndRevisionAudit(t *testing.T) {
 	assert.Equal(t, token.ModelLimits, revisions[0].ModelScope)
 }
 
+func TestYanCoreVirtualKeyPolicyAtomicallyUpdatesTokenProjection(t *testing.T) {
+	truncateTables(t)
+	user := &User{Username: "policy-projection-user", Password: "password", Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+	require.NoError(t, DB.Create(user).Error)
+	token := &Token{UserId: user.Id, Name: "old-name", Key: "sha256:policy-projection", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1"}
+	policy, err := BuildYanCoreVirtualKeyPolicy(token, nil)
+	require.NoError(t, err)
+	require.NoError(t, CreateYanCoreVirtualKeyWithPolicy(token, policy, user.Id, "initial policy"))
+
+	name := "agent-key"
+	quota := 2500
+	expiry := time.Now().Add(24 * time.Hour).Unix()
+	models := []string{"deepseek-reasoner", "deepseek-chat"}
+	allowIPs := "192.0.2.7, 10.0.0.0/8"
+	group := "default"
+	crossGroupRetry := false
+	updated, err := UpdateYanCoreVirtualKeyPolicy(token.Id, user.Id, user.Id, YanCoreVirtualKeyPolicyConfig{
+		MaxRPM: 20,
+		Reason: "update agent access policy",
+		Token: &YanCoreVirtualKeyTokenUpdate{
+			Name: &name, RemainQuota: &quota, ExpiredTime: &expiry, Models: &models,
+			AllowIPs: &allowIPs, Group: &group, CrossGroupRetry: &crossGroupRetry,
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "deepseek", updated.ProviderScope)
+	assert.Equal(t, 2, updated.Version)
+
+	var stored Token
+	require.NoError(t, DB.First(&stored, token.Id).Error)
+	assert.Equal(t, name, stored.Name)
+	assert.Equal(t, quota, stored.RemainQuota)
+	assert.Equal(t, expiry, stored.ExpiredTime)
+	assert.Equal(t, "deepseek-chat,deepseek-reasoner", stored.ModelLimits)
+	assert.Equal(t, "10.0.0.0/8\n192.0.2.7", stored.GetIpLimitsString())
+
+	revisions, err := ListYanCoreVirtualKeyPolicyRevisions(token.Id, user.Id)
+	require.NoError(t, err)
+	require.Len(t, revisions, 2)
+	assert.Equal(t, stored.ModelLimits, revisions[0].ModelScope)
+	assert.Equal(t, stored.GetIpLimitsString(), revisions[0].SourceScope)
+	assert.Equal(t, stored.RemainQuota, revisions[0].BudgetQuota)
+	assert.Equal(t, stored.ExpiredTime, revisions[0].ExpiresAt)
+	assert.Equal(t, stored.Status, revisions[0].TokenStatus)
+	assert.Equal(t, "update agent access policy", revisions[0].Reason)
+}
+
+func TestYanCoreVirtualKeyPolicyRejectsInvalidProjectionWithoutPartialWrite(t *testing.T) {
+	truncateTables(t)
+	user := &User{Username: "policy-rollback-user", Password: "password", Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+	require.NoError(t, DB.Create(user).Error)
+	token := &Token{UserId: user.Id, Name: "rollback-key", Key: "sha256:policy-rollback", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1"}
+	policy, err := BuildYanCoreVirtualKeyPolicy(token, nil)
+	require.NoError(t, err)
+	require.NoError(t, CreateYanCoreVirtualKeyWithPolicy(token, policy, user.Id, "initial policy"))
+
+	invalidIPs := "not-an-ip"
+	_, err = UpdateYanCoreVirtualKeyPolicy(token.Id, user.Id, user.Id, YanCoreVirtualKeyPolicyConfig{
+		MaxRPM: 99, Reason: "invalid source scope",
+		Token: &YanCoreVirtualKeyTokenUpdate{AllowIPs: &invalidIPs},
+	})
+	require.ErrorIs(t, err, ErrYanCoreVirtualKeyPolicyInvalid)
+
+	storedPolicy, err := GetYanCoreVirtualKeyPolicy(token.Id, user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 1, storedPolicy.Version)
+	assert.Equal(t, YanCoreVirtualKeyPolicyDefaultRPM, storedPolicy.MaxRPM)
+	revisions, err := ListYanCoreVirtualKeyPolicyRevisions(token.Id, user.Id)
+	require.NoError(t, err)
+	assert.Len(t, revisions, 1)
+}
+
+func TestYanCoreVirtualKeyPolicySynchronizesDisableState(t *testing.T) {
+	truncateTables(t)
+	user := &User{Username: "policy-status-user", Password: "password", Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+	require.NoError(t, DB.Create(user).Error)
+	token := &Token{UserId: user.Id, Name: "status-key", Key: "sha256:policy-status", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1"}
+	policy, err := BuildYanCoreVirtualKeyPolicy(token, nil)
+	require.NoError(t, err)
+	require.NoError(t, CreateYanCoreVirtualKeyWithPolicy(token, policy, user.Id, "initial policy"))
+
+	disabled := common.TokenStatusDisabled
+	updated, err := UpdateYanCoreVirtualKeyPolicy(token.Id, user.Id, user.Id, YanCoreVirtualKeyPolicyConfig{
+		Reason: "disable compromised key",
+		Token:  &YanCoreVirtualKeyTokenUpdate{Status: &disabled},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, YanCoreVirtualKeyPolicyDisabled, updated.Status)
+	var stored Token
+	require.NoError(t, DB.First(&stored, token.Id).Error)
+	assert.Equal(t, common.TokenStatusDisabled, stored.Status)
+}
+
 func TestBuildYanCoreVirtualKeyPolicyRejectsAmbiguousModelProvider(t *testing.T) {
 	token := &Token{UserId: 1, Name: "ambiguous", Key: "sha256:ambiguous", KeyHashEnabled: true, ModelLimitsEnabled: true, ModelLimits: "claude-3-7-sonnet"}
 	_, err := BuildYanCoreVirtualKeyPolicy(token, nil)
@@ -56,11 +150,18 @@ func TestBuildYanCoreVirtualKeyPolicyRejectsAmbiguousModelProvider(t *testing.T)
 }
 
 func TestBuildYanCoreVirtualKeyPolicyRejectsUnsupportedOrWildcardActiveProvider(t *testing.T) {
-	token := &Token{UserId: 1, Name: "provider-scope", Key: "sha256:provider-scope", KeyHashEnabled: true, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1-mini"}
+	token := &Token{UserId: 1, Name: "provider-scope", Key: "sha256:provider-scope", KeyHashEnabled: true, RemainQuota: 100, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1-mini"}
 	for _, providers := range [][]string{{"anthropic"}, {"*"}, {"openai", "*"}} {
 		_, err := BuildYanCoreVirtualKeyPolicy(token, &YanCoreVirtualKeyPolicyConfig{Providers: providers})
 		require.ErrorIs(t, err, ErrYanCoreVirtualKeyPolicyInvalid)
 	}
+}
+
+func TestBuildYanCoreVirtualKeyPolicyRejectsInvalidSourceScope(t *testing.T) {
+	invalidIPs := "192.0.2.1\nnot-an-ip"
+	token := &Token{UserId: 1, Name: "invalid-source", Key: "sha256:invalid-source", KeyHashEnabled: true, RemainQuota: 100, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1-mini", AllowIps: &invalidIPs}
+	_, err := BuildYanCoreVirtualKeyPolicy(token, nil)
+	require.ErrorIs(t, err, ErrYanCoreVirtualKeyPolicyInvalid)
 }
 
 func TestBackfillYanCoreVirtualKeyPoliciesDisablesAmbiguousLegacyKey(t *testing.T) {

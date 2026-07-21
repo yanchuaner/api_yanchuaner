@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,11 +21,26 @@ const yanCoreVirtualKeyPolicyContextKey = "yancore_virtual_key_policy"
 var (
 	ErrYanCoreVirtualKeyPolicyMissing  = errors.New("yancore virtual key policy is missing")
 	ErrYanCoreVirtualKeyProviderDenied = errors.New("yancore virtual key provider is not allowed")
+	ErrYanCoreVirtualKeyFormatDenied   = errors.New("yancore virtual key relay format is not allowed")
 )
 
 func SetYanCoreVirtualKeyPolicyContext(c *gin.Context, policy *model.YanCoreVirtualKeyPolicy) {
 	if c != nil && policy != nil {
 		c.Set(yanCoreVirtualKeyPolicyContextKey, policy)
+	}
+}
+
+// CheckYanCoreVirtualKeyRelayFormat keeps policy-managed keys on relay paths
+// whose token accounting and limiter lifecycle are covered by this release.
+func CheckYanCoreVirtualKeyRelayFormat(c *gin.Context, relayFormat types.RelayFormat) error {
+	if YanCoreVirtualKeyPolicyFromContext(c) == nil {
+		return nil
+	}
+	switch relayFormat {
+	case types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrYanCoreVirtualKeyFormatDenied, relayFormat)
 	}
 }
 

@@ -17,15 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   ChevronDown,
   Copy,
   KeyRound,
   Settings2,
+  ShieldCheck,
   WalletCards,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -82,7 +83,13 @@ import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
-import { createApiKey, updateApiKey, getApiKey } from '../api'
+import {
+  createApiKey,
+  updateApiKey,
+  getApiKey,
+  getVirtualKeyPolicy,
+  updateVirtualKeyPolicy,
+} from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
@@ -91,7 +98,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
-import type { ApiKey } from '../types'
+import type { ApiKey, ApiKeyFormData, VirtualKeyPolicyUpdate } from '../types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -122,6 +129,22 @@ export function ApiKeysMutateDrawer({
     status?.data?.yanchuaner_hashed_keys_enabled === true
   const finiteBudgetRequired =
     hashedKeysEnabled && (!isUpdate || currentRow?.key_hash_enabled === true)
+  const policyEnabled =
+    status?.yancore_virtual_key_policy_enabled === true ||
+    status?.data?.yancore_virtual_key_policy_enabled === true
+  const policyManaged = policyEnabled && finiteBudgetRequired
+  const defaultPolicyRPM =
+    status?.yancore_virtual_key_default_rpm ??
+    status?.data?.yancore_virtual_key_default_rpm ??
+    60
+  const defaultPolicyTPM =
+    status?.yancore_virtual_key_default_tpm ??
+    status?.data?.yancore_virtual_key_default_tpm ??
+    100000
+  const defaultPolicyConcurrency =
+    status?.yancore_virtual_key_default_concurrency ??
+    status?.data?.yancore_virtual_key_default_concurrency ??
+    2
 
   // Fetch models
   const { data: modelsData } = useQuery({
@@ -139,7 +162,20 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
-  const models = modelsData?.data || []
+  const selectableModels = useMemo(() => {
+    const models = modelsData?.data || []
+    if (!policyManaged) return models
+    return models.filter((model) => {
+      const normalized = model.toLowerCase()
+      return (
+        normalized.startsWith('gpt-') ||
+        normalized.startsWith('o1') ||
+        normalized.startsWith('o3') ||
+        normalized.startsWith('o4') ||
+        normalized.startsWith('deepseek')
+      )
+    })
+  }, [modelsData?.data, policyManaged])
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
     ([key, info]) => ({
@@ -150,41 +186,89 @@ export function ApiKeysMutateDrawer({
     })
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
-  const schema = getApiKeyFormSchema(t, finiteBudgetRequired)
+  const policyDefaults = useMemo(
+    () => ({
+      max_rpm: defaultPolicyRPM,
+      max_tpm: defaultPolicyTPM,
+      max_concurrency: defaultPolicyConcurrency,
+    }),
+    [defaultPolicyRPM, defaultPolicyTPM, defaultPolicyConcurrency]
+  )
+  const schema = getApiKeyFormSchema(
+    t,
+    finiteBudgetRequired,
+    policyManaged,
+    policyManaged && isUpdate
+  )
 
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(schema),
     defaultValues: getApiKeyFormDefaultValues(
       defaultUseAutoGroup,
-      finiteBudgetRequired
+      finiteBudgetRequired,
+      policyDefaults
     ),
   })
 
-  // Load existing data when updating
+  const {
+    data: editData,
+    isFetching: isEditDataLoading,
+    isError: isEditDataError,
+  } = useQuery({
+    queryKey: ['api-key-policy-edit', currentRow?.id, policyManaged],
+    queryFn: async () => {
+      if (!currentRow) throw new Error('API key is required')
+      const keyResult = await getApiKey(currentRow.id)
+      if (!keyResult.success || !keyResult.data) {
+        throw new Error(keyResult.message || 'Failed to load API key')
+      }
+      if (!policyManaged) return { apiKey: keyResult.data }
+      const policyResult = await getVirtualKeyPolicy(currentRow.id)
+      if (!policyResult.success || !policyResult.data) {
+        throw new Error(policyResult.message || 'Failed to load key policy')
+      }
+      return { apiKey: keyResult.data, policy: policyResult.data }
+    },
+    enabled: open && isUpdate && !!currentRow,
+    staleTime: 0,
+  })
+  const createKeyMutation = useMutation({ mutationFn: createApiKey })
+  const updateKeyMutation = useMutation({ mutationFn: updateApiKey })
+  const updatePolicyMutation = useMutation({
+    mutationFn: (input: { tokenId: number; data: VirtualKeyPolicyUpdate }) =>
+      updateVirtualKeyPolicy(input.tokenId, input.data),
+  })
+
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
-      void getApiKey(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformApiKeyToFormDefaults(result.data))
-        }
-      })
+    if (open && isUpdate && editData) {
+      form.reset(
+        transformApiKeyToFormDefaults(editData.apiKey, editData.policy)
+      )
     } else if (open && !isUpdate) {
       form.reset(
         getApiKeyFormDefaultValues(
           defaultUseAutoGroup && backendHasAuto,
-          finiteBudgetRequired
+          finiteBudgetRequired,
+          policyDefaults
         )
       )
     }
   }, [
     open,
     isUpdate,
-    currentRow,
+    editData,
     form,
     defaultUseAutoGroup,
     backendHasAuto,
     finiteBudgetRequired,
+    policyDefaults,
   ])
+
+  useEffect(() => {
+    if (open && isEditDataError) {
+      toast.error(t(ERROR_MESSAGES.LOAD_FAILED))
+    }
+  }, [open, isEditDataError, t])
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
@@ -208,10 +292,29 @@ export function ApiKeysMutateDrawer({
       const basePayload = transformFormDataToPayload(data)
 
       if (isUpdate && currentRow) {
-        const result = await updateApiKey({
-          ...basePayload,
-          id: currentRow.id,
-        })
+        const result = policyManaged
+          ? await updatePolicyMutation.mutateAsync({
+              tokenId: currentRow.id,
+              data: {
+                max_rpm: data.max_rpm,
+                max_tpm: data.max_tpm,
+                max_concurrency: data.max_concurrency,
+                reason: data.policy_reason?.trim() || '',
+                token: {
+                  name: basePayload.name,
+                  remain_quota: basePayload.remain_quota,
+                  expired_time: basePayload.expired_time,
+                  models: data.model_limits,
+                  allow_ips: basePayload.allow_ips,
+                  group: basePayload.group,
+                  cross_group_retry: basePayload.cross_group_retry,
+                },
+              },
+            })
+          : await updateKeyMutation.mutateAsync({
+              ...basePayload,
+              id: currentRow.id,
+            })
         if (result.success) {
           toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
           onOpenChange(false)
@@ -226,13 +329,21 @@ export function ApiKeysMutateDrawer({
         const oneTimeKeys: string[] = []
 
         for (let i = 0; i < count; i++) {
-          const result = await createApiKey({
+          const createPayload: ApiKeyFormData = {
             ...basePayload,
+            yancore_policy: policyManaged
+              ? {
+                  max_rpm: data.max_rpm,
+                  max_tpm: data.max_tpm,
+                  max_concurrency: data.max_concurrency,
+                }
+              : undefined,
             name:
               i === 0 && data.name
                 ? data.name
                 : `${data.name || 'default'}-${Math.random().toString(36).slice(2, 8)}`,
-          })
+          }
+          const result = await createKeyMutation.mutateAsync(createPayload)
           if (result.success) {
             successCount++
             if (result.data?.key) oneTimeKeys.push(result.data.key)
@@ -260,7 +371,8 @@ export function ApiKeysMutateDrawer({
     }
   }
 
-  const onInvalid: SubmitErrorHandler<ApiKeyFormValues> = () => {
+  const onInvalid: SubmitErrorHandler<ApiKeyFormValues> = (errors) => {
+    if (errors.model_limits) setAdvancedOpen(true)
     toast.error(t('Please fix the highlighted fields before saving'))
   }
 
@@ -541,6 +653,118 @@ export function ApiKeysMutateDrawer({
               )}
             </SideDrawerSection>
 
+            {policyManaged && (
+              <SideDrawerSection>
+                <SideDrawerSectionHeader
+                  title={t('Request limits')}
+                  description={t('Set independent limits for this virtual key')}
+                  icon={<ShieldCheck className='size-4' />}
+                  iconTone='info'
+                />
+                {isUpdate && editData?.policy && (
+                  <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs'>
+                    <span>
+                      {t('Policy status')}: {t(editData.policy.status)}
+                    </span>
+                    <span>
+                      {t('Revision')}: {editData.policy.version}
+                    </span>
+                    <span>
+                      {t('Providers')}: {editData.policy.provider_scope}
+                    </span>
+                  </div>
+                )}
+                <div className='grid gap-4 sm:grid-cols-3'>
+                  <FormField
+                    control={form.control}
+                    name='max_rpm'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('RPM')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min='1'
+                            onChange={(event) =>
+                              field.onChange(Number(event.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='max_tpm'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('TPM')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min='1'
+                            onChange={(event) =>
+                              field.onChange(Number(event.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='max_concurrency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Concurrency')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min='1'
+                            onChange={(event) =>
+                              field.onChange(Number(event.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                {isUpdate && (
+                  <FormField
+                    control={form.control}
+                    name='policy_reason'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Change reason')}</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            maxLength={255}
+                            rows={2}
+                            className='resize-none'
+                            placeholder={t(
+                              'Describe why this policy is changing'
+                            )}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('The reason is saved in the policy revision log')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </SideDrawerSection>
+            )}
+
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <SideDrawerSection>
                 <CollapsibleTrigger
@@ -574,14 +798,16 @@ export function ApiKeysMutateDrawer({
                           <FormLabel>{t('Model Limits')}</FormLabel>
                           <FormControl>
                             <MultiSelect
-                              options={models.map((m) => ({
+                              options={selectableModels.map((m) => ({
                                 label: m,
                                 value: m,
                               }))}
                               selected={field.value}
                               onChange={field.onChange}
                               placeholder={t(
-                                'Select models (empty for allow all)'
+                                policyManaged
+                                  ? 'Select supported models'
+                                  : 'Select models (empty for allow all)'
                               )}
                             />
                           </FormControl>
@@ -635,7 +861,8 @@ export function ApiKeysMutateDrawer({
           <Button
             type='button'
             onClick={form.handleSubmit(onSubmit, onInvalid)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isEditDataLoading || isEditDataError}
+            aria-busy={isEditDataLoading}
             className='w-full sm:w-auto'
           >
             {isSubmitting ? t('Saving...') : t('Save changes')}

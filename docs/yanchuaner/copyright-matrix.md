@@ -45,7 +45,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | --- | --- | --- |
 | 用户余额、Token 与用量日志的业务真值 | P0/P1 | 独立权益账户、不可变流水、哈希虚拟 Key 和审计服务 |
 | 管理员发放、活动和兑换码 | P1 | 自主活动模型、目标人群、领取次数、有效期和幂等兑换 |
-| 异步任务与完整 Key 策略归属 | P1 | 将已实现的 provider/RPM/TPM/并发扩展到异步任务，并把 model/预算/有效期/来源兼容投影移入自主事务 |
+| 异步任务与完整 Key 策略归属 | P1 | 当前 model/预算/有效期/来源已由自主事务接管写入但仍存放在 Token；后续迁出上游表，并为异步任务实现持久化预留 |
 | BYOK | P1 | 独立 Vault/Broker、信封加密、所有者绑定、脱敏管理和零明文日志 |
 | New API 用户端 | P1 | 自主控制台与 API，不继续扩展上游用户页面 |
 | New API 管理端/网关耦合 | P2 | 自主控制面通过协议调用可替换网关，完成双写和切流 |
@@ -69,7 +69,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `controller/yanchuaner_entitlement.go` | 独立活动创建、一次性兑换码发放、用户领取与权益查询接口 | 随仓库 AGPLv3-or-later |
 | `service/funding_source.go`、`service/billing_session.go` 相关 YanCore 路径 | 独立活动权益来源选择、预扣、结算、退款和兼容投影维护 | 随仓库 AGPLv3-or-later |
 | `docs/yanchuaner/**` | 燕中需求、架构、验收、迁移和来源设计 | 作者版权；仓库分发条件待运营主体/贡献政策确认 |
-| `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1` | 燕中部署边界与密钥生成流程 | 作者版权；不得包含生产秘密 |
+| `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1`、`scripts/verify-virtual-key-policy.ps1` | 燕中部署边界、密钥生成与控制面验收流程 | 作者版权；不得包含生产秘密 |
 
 ## 更新规则
 

@@ -23,7 +23,7 @@
 - 主站管理员同步为燕中 API 管理员；其他 OAuth 提供方不能通过角色字段提权。
 - 新成员首期公益额度为 `$1.00 / ¥7.00`。
 - 用户按应用/场景创建和撤销虚拟 Key；新 Key 只展示一次，服务端只保存哈希与脱敏片段。
-- YanCore 策略为每个哈希 Key 限定 OpenAI/DeepSeek 供应商、模型、有限预算、有效期、来源 IP、RPM、TPM 与并发，并为策略变更保存不可变修订。
+- YanCore 策略为每个哈希 Key 限定 OpenAI/DeepSeek 供应商、模型、有限预算、有效期、来源 IP、RPM、TPM 与并发；用户控制台通过单一原子接口编辑这些属性，每次变更都保存不可变修订。
 - 公益额度的赠送、预扣、结算、退款和管理员调整写入不可变流水，余额字段只作兼容投影。
 - 自主燕中 AI 登录后获得 15 分钟、有限预算且仅允许配置模型的应用会话 Key；调用继续进入标准 `/v1` 扣费和用量日志链路。
 - 管理员定向增减或覆盖额度时必须填写原因，并记录操作者、目标用户、金额与原因。
@@ -64,6 +64,8 @@ LiteLLM：模型路由 / 重试 / 上游成本核对
 cd C:\Dev\yanchuaner\api_yanchuaner
 .\scripts\generate-deploy-env.ps1
 .\scripts\bootstrap-integrated-stack.ps1
+# 开启并重启本地策略栈后，验证创建、编辑、修订和旧接口拒绝
+.\scripts\verify-virtual-key-policy.ps1
 ```
 
 集成栈入口：

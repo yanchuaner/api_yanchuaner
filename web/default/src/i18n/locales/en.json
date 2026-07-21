@@ -5231,6 +5231,18 @@
     "One-time keys cannot be copied again.": "One-time keys cannot be copied again.",
     "Virtual keys require a finite budget": "Virtual keys require a finite budget",
     "Quota must be greater than zero": "Quota must be greater than zero",
+    "Request limits": "Request limits",
+    "Set independent limits for this virtual key": "Set independent limits for this virtual key",
+    "Policy status": "Policy status",
+    "Revision": "Revision",
+    "Providers": "Providers",
+    "Concurrency": "Concurrency",
+    "Change reason": "Change reason",
+    "Describe why this policy is changing": "Describe why this policy is changing",
+    "The reason is saved in the policy revision log": "The reason is saved in the policy revision log",
+    "Select at least one supported model": "Select at least one supported model",
+    "Enter a change reason": "Enter a change reason",
+    "Select supported models": "Select supported models",
     "Zoom": "Zoom"
   }
 }

@@ -35,7 +35,7 @@ LiteLLM 数据面  ----->  网关 PostgreSQL
 
 阶段 1 的 `YanCore Subject Grant` 是燕中自主定义的应用主体协议。自主 AI Web BFF 通过主体交换取得一次性、哈希存储、15 分钟有效的应用会话 Key；该 Key 复用 New API 的 `/v1` 路由、计费和用量日志，但模型白名单、会话预算与生命周期由 YanCore 策略定义。Open WebUI 与 LiteLLM 不拥有这些业务语义。契约见 [phase-1-yancore-subject-grant.md](phase-1-yancore-subject-grant.md)。
 
-阶段 2C 为每个哈希 Key 增加 YanCore 策略和不可变修订。认证阶段加载策略，渠道选定后复核供应商，转发前通过 Redis 原子预留 RPM/TPM/并发，真实用量返回后结算 TPM。预算、有效期、模型和来源 IP 在 B 阶段仍由 Token 兼容投影执行，不建立第二套余额；详细边界见 [phase-2-virtual-key-policy.md](phase-2-virtual-key-policy.md)。
+阶段 2C/2D 为每个哈希 Key 增加 YanCore 策略、不可变修订和极简控制台。认证阶段加载策略，渠道选定后复核供应商，转发前通过 Redis 原子预留 RPM/TPM/并发，真实用量返回后结算 TPM。预算、有效期、模型和来源 IP 在 B 阶段仍由 Token 兼容列执行，但用户写入已收口到 YanCore 单事务并同步追加修订，旧 Token 接口不能绕行；详细边界见 [phase-2-virtual-key-policy.md](phase-2-virtual-key-policy.md)。
 
 ## 主站 OAuth 契约
 

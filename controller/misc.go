@@ -126,6 +126,10 @@ func GetStatus(c *gin.Context) {
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
 	}
+	data["yancore_virtual_key_policy_enabled"] = model.YanCoreVirtualKeyPolicyEnabled()
+	data["yancore_virtual_key_default_rpm"] = common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_RPM", model.YanCoreVirtualKeyPolicyDefaultRPM)
+	data["yancore_virtual_key_default_tpm"] = common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_TPM", model.YanCoreVirtualKeyPolicyDefaultTPM)
+	data["yancore_virtual_key_default_concurrency"] = common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_CONCURRENCY", model.YanCoreVirtualKeyPolicyDefaultConcurrency)
 
 	// 根据启用状态注入可选内容
 	if cs.ApiInfoEnabled {

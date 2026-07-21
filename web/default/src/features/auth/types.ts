@@ -129,6 +129,10 @@ export interface SystemStatus {
     password_login_enabled?: boolean
     password_register_enabled?: boolean
     yanchuaner_hashed_keys_enabled?: boolean
+    yancore_virtual_key_policy_enabled?: boolean
+    yancore_virtual_key_default_rpm?: number
+    yancore_virtual_key_default_tpm?: number
+    yancore_virtual_key_default_concurrency?: number
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown
   }
@@ -173,6 +177,10 @@ export interface SystemStatus {
   password_login_enabled?: boolean
   password_register_enabled?: boolean
   yanchuaner_hashed_keys_enabled?: boolean
+  yancore_virtual_key_policy_enabled?: boolean
+  yancore_virtual_key_default_rpm?: number
+  yancore_virtual_key_default_tpm?: number
+  yancore_virtual_key_default_concurrency?: number
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   [key: string]: unknown
 }

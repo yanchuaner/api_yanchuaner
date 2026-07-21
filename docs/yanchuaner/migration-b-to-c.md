@@ -36,15 +36,15 @@
 - `YanCoreEntitlementFunding` 已接入统一 BillingSession；开启 `YANCHUANER_CAMPAIGN_FUNDING_ENABLED` 后，匹配供应商/模型的活动权益先预扣，结算差额和失败退款继续写入活动权益流水及 `campaign` 总账。
 - 钱包可用额从兼容总余额中排除已跟踪活动额度；即使活动范围不匹配，也不能通过旧钱包路径越权消费。当前异步任务因未持久化 `entitlement_id` 会明确拒绝活动权益，不静默降级。
 - 模型/服务测试覆盖首次领取、重复请求、来源分账、领取上限、预扣、结算、退款、跨模型隔离和活动额度不足不回退钱包；尚未开放真实生产活动、异步活动结算和定向人群规则。
-- `YanCoreVirtualKeyPolicy` 与不可变修订表已实现每个哈希 Key 的 OpenAI/DeepSeek 供应商、RPM、TPM、并发和启停策略；模型、来源 IP、预算和有效期继续复用 Token 兼容投影。
+- `YanCoreVirtualKeyPolicy` 与不可变修订表已实现每个哈希 Key 的 OpenAI/DeepSeek 供应商、RPM、TPM、并发和启停策略；模型、来源 IP、预算和有效期继续存放在 Token 兼容列，但已由 YanCore 单事务更新并写入同一修订快照。
 - 标准文本 Relay 已在认证、选路、转发和用量结算阶段执行 fail-closed 策略；Redis Lua 保证多实例原子限流，未配置 Redis 时的内存实现仅用于单机开发。
 - 功能默认关闭；启用回填会激活可明确推导供应商的历史哈希 Key，并把未知/通配模型的 Key 置为禁用，避免静默扩权。
-- SQLite、PostgreSQL 16.14、MySQL 8.0 与 Redis 7 已覆盖创建、更新、修订、回填、AI Web 会话策略、行锁和限流故障语义。仍未完成异步任务限流、策略 UI、旧 Token 投影变更的统一修订和 BYOK。
+- SQLite、PostgreSQL 16.14、MySQL 8.0 与 Redis 7 已覆盖创建、更新、修订、回填、AI Web 会话策略、行锁和限流故障语义；极简用户端已接入策略创建、查看、原子编辑和启停。仍未完成异步任务限流、管理员批量策略操作和 BYOK。
 
 ### 工作项
 
 - 独立 entitlement、campaign、redeem_code、claim 和目标人群模型。
-- 将已实现的每 Key provider/RPM/TPM/并发策略扩展到异步任务，并把 model、预算、有效期和来源从 Token 兼容投影迁入自主事务。
+- 为异步任务设计持久化预留与恢复后，再扩展每 Key provider/RPM/TPM/并发；把 model、预算、有效期和来源从 Token 兼容列迁出，当前 YanCore 原子事务作为迁移入口。
 - 公益、活动、班级/年级权益完全分账，明确扣减顺序；当前活动消费开关关闭时不选择活动来源，开启后匹配活动额度不足直接拒绝，不自动跨来源。
 - BYOK Vault/Broker：信封加密、KMS/KEK、所有者绑定、脱敏运维和密钥轮换。
 - Open WebUI 用户级委托，消除共享服务 Key 的个人归因缺口。

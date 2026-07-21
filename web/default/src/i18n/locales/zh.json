@@ -5231,6 +5231,18 @@
     "One-time keys cannot be copied again.": "一次性显示的密钥无法再次复制。",
     "Virtual keys require a finite budget": "虚拟密钥必须设置有限预算",
     "Quota must be greater than zero": "额度必须大于零",
+    "Request limits": "请求限制",
+    "Set independent limits for this virtual key": "为这把虚拟密钥设置独立调用限制",
+    "Policy status": "策略状态",
+    "Revision": "修订版本",
+    "Providers": "供应商",
+    "Concurrency": "并发数",
+    "Change reason": "变更原因",
+    "Describe why this policy is changing": "说明本次策略变更原因",
+    "The reason is saved in the policy revision log": "原因将写入不可变策略修订记录",
+    "Select at least one supported model": "请至少选择一个受支持的模型",
+    "Enter a change reason": "请输入变更原因",
+    "Select supported models": "选择受支持的模型",
     "Zoom": "缩放"
   }
 }

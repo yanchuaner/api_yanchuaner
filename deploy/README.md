@@ -24,6 +24,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 
 阶段 2C 的 `YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED` 也默认保持 `false`。先以关闭状态迁移表，再在隔离数据库开启并审查历史哈希 Key 回填：已知 OpenAI/DeepSeek 模型生成活动策略，未知或通配模型保持禁用。多实例和预览流量必须连接 Redis；已配置 Redis 但故障时请求返回 503。完整步骤见 `docs/yanchuaner/phase-2-virtual-key-policy.md`。
 
+阶段 2D 开启后，策略管理页与快速启停都走 YanCore 原子接口；旧 `/api/token/` 更新对受策略管理的哈希 Key 返回 HTTP 409。重启本地栈并完成回填审查后，运行 `scripts/verify-virtual-key-policy.ps1` 验证创建、投影更新、修订增长与绕行拒绝。脚本不会调用付费模型或输出一次性 Key。
+
 ## 首次初始化顺序
 
 1. 在本机隧道中完成 New API root 初始化。引导脚本会生成 `NEW_API_ROOT_USER_ID` 与 `NEW_API_ROOT_ACCESS_TOKEN` 并仅写入忽略提交的 `deploy/.env`，供关闭密码登录后的重复部署使用。

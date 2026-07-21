@@ -1,7 +1,7 @@
-# 阶段 2C：YanCore 虚拟 Key 策略
+# 阶段 2C/2D：YanCore 虚拟 Key 策略与控制台
 
 更新日期：2026-07-21
-状态：`IMPLEMENTED_FLAG_OFF`
+状态：`IMPLEMENTED_LOCAL_ACCEPTANCE_PENDING`
 
 ## 目标与边界
 
@@ -14,7 +14,7 @@
 | 表 | 作用 | 不变量 |
 | --- | --- | --- |
 | `yan_core_virtual_key_policies` | 每个 Token 一条当前策略 | `token_id` 唯一；活动策略不得使用通配供应商；版本单调递增 |
-| `yan_core_virtual_key_policy_revisions` | 创建、回填和每次更新的不可变快照 | 保存操作者、原因、供应商、模型、来源、速率、状态和版本；业务代码不更新或删除旧记录 |
+| `yan_core_virtual_key_policy_revisions` | 创建、回填和每次更新的不可变快照 | 保存操作者、原因、供应商、模型、来源、有限预算、有效期、Token/策略状态、速率和版本；业务代码不更新或删除旧记录 |
 | `tokens` | B 阶段兼容投影 | Key 只保存哈希；有限预算、有效期、模型白名单和来源 IP 继续由成熟网关校验 |
 
 默认限制为 `60 RPM / 100000 TPM / 2 并发`。API 中的零值表示创建时使用默认值、更新时保留现值，不表示无限制。
@@ -23,10 +23,12 @@
 
 - 创建哈希 Key：现有 `POST /api/token/` 可带 `yancore_policy`；策略与 Token、首条修订在同一事务提交。
 - `GET /api/yancore/virtual-key-policies/:token_id`：读取本人 Key 的当前策略。
-- `PUT /api/yancore/virtual-key-policies/:token_id`：更新供应商、RPM、TPM、并发或状态；`reason` 必填。
+- `PUT /api/yancore/virtual-key-policies/:token_id`：在一个数据库事务中更新供应商、RPM、TPM、并发、状态，以及 Token 兼容投影中的名称、模型、来源 IP、有限预算、有效期与分组；`reason` 必填。
 - `GET /api/yancore/virtual-key-policies/:token_id/revisions`：按版本倒序读取最近 100 条修订。
 
 活动供应商集合只能由 `openai`、`deepseek` 组成，并且必须覆盖 Token 模型白名单推导出的供应商。`*` 只用于无法安全识别的历史 Key 禁用占位，不能启用。
+
+策略开关开启后，受管理哈希 Key 不允许再通过旧 `PUT /api/token/` 修改或启停，旧接口固定返回 HTTP 409。用户控制台创建时提交速率策略，编辑时同时读取 Token 和策略，保存时只调用上述原子接口；快速启停同步修改 Token 状态与 YanCore 策略状态。
 
 ## 请求执行顺序
 
@@ -37,6 +39,8 @@
 5. 收到真实用量后按实际总 Token 调整 TPM；无有效用量或请求失败时退回 TPM 预留；并发槽始终释放。
 6. 预算继续进入既有预扣、结算、退款和不可变额度流水；YanCore 限流不创建第二套余额。
 
+只有 OpenAI Chat/Completions 与 Responses 文本协议进入当前策略执行面。Image、Audio、Realtime、Embedding、异步 Task 和 Midjourney 对受策略管理 Key 返回 403；在持久化预留、真实用量结算和失败恢复完成前不得开放这些路径。
+
 Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 时使用单进程内存限流，仅适合本地开发；多副本或公开预览必须使用 Redis。
 
 ## 迁移与启用
@@ -46,6 +50,7 @@ Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 
 3. 在隔离数据库开启开关执行回填。可推导供应商的 Key 创建活动策略；空白、通配或未知模型的 Key 创建为禁用策略并留下原因。
 4. 审查禁用清单，逐个修正模型范围和策略，不批量扩大权限。
 5. 验证 Redis、403/429/503、预算扣减、失败退款和修订查询后，再对本地集成栈开启开关。
+6. 使用本地 root 访问令牌运行 `scripts/verify-virtual-key-policy.ps1`；脚本必须验证版本从 1 增至 2、修订恰为两条且旧 Token 更新返回 409。
 
 ## 验证证据
 
@@ -60,7 +65,7 @@ Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 
 
 ## 已知限制与下一步
 
-- RPM/TPM/并发目前只覆盖标准同步文本 Relay；异步任务只执行供应商复核，尚未持久化限流预留。
-- 模型、来源 IP、预算和有效期仍是 New API Token 兼容投影；通过旧 Token 更新接口修改时不会生成新的 YanCore 策略修订，阶段 C 控制面需把这些字段移入自主事务。
+- RPM/TPM/并发目前只开放标准同步文本 Relay；异步和媒体协议已明确拒绝，尚未实现持久化限流预留。
+- 模型、来源 IP、预算和有效期仍存放在 New API Token 兼容列，但已只能通过 YanCore 事务更新并追加修订；阶段 C 仍需把存储真值迁出 Token。
 - 固定分钟窗口适合预览期，不能代替长期的分布式配额、成本告警和异常用量风控。
-- 策略 API 目前是后端契约；极简用户端和管理员批量策略操作在下一 UI slice 实现。
+- 极简用户端已接入创建、查看、编辑和启停；管理员批量策略操作仍在下一运营 UI slice 实现。
