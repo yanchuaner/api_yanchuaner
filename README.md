@@ -87,7 +87,7 @@ New API 消费端在独立数据库和 Redis 上准备完成后，可执行：
 - 燕中 AI：`http://localhost:3001`
 - LiteLLM 管理端：`http://localhost:4000/ui`
 
-详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)、[YanCore 主体凭证](docs/yanchuaner/phase-1-yancore-subject-grant.md)、[虚拟 Key 策略](docs/yanchuaner/phase-2-virtual-key-policy.md) 和 [权益迁移](docs/yanchuaner/migration-b-to-c.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
+详细部署说明见 [deploy/README.md](deploy/README.md)，系统边界见 [现状与风险](docs/yanchuaner/current-state-and-risks.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)、[YanCore 主体凭证](docs/yanchuaner/phase-1-yancore-subject-grant.md)、[虚拟 Key 策略](docs/yanchuaner/phase-2-virtual-key-policy.md) 和 [权益迁移](docs/yanchuaner/migration-b-to-c.md)，阶段 0 决策与发布门禁见 [阶段 0 决策登记](docs/yanchuaner/phase-0-decision-record.md)，依赖与构建约束见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，上线门槛见 [验收矩阵](docs/yanchuaner/acceptance.md)。
 
 ## 安全边界
 
