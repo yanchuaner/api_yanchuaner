@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -13,7 +14,12 @@ import (
 const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
+	BillingSourceCampaign     = "campaign"
 )
+
+func yanCoreCampaignFundingEnabled() bool {
+	return common.GetEnvOrDefaultBool("YANCHUANER_CAMPAIGN_FUNDING_ENABLED", false)
+}
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
@@ -77,9 +83,13 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {
-			if relayInfo.BillingSource == BillingSourceSubscription {
+			switch relayInfo.BillingSource {
+			case BillingSourceSubscription:
 				checkAndSendSubscriptionQuotaNotify(relayInfo)
-			} else {
+			case BillingSourceCampaign:
+				// Campaign balances are shown through YanCore entitlements; wallet
+				// notifications would report the aggregate compatibility balance.
+			default:
 				checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
 			}
 		}

@@ -22,13 +22,18 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type ApiKeyFormData, type ApiKey } from '../types'
+import type { ApiKey, ApiKeyFormData, VirtualKeyPolicy } from '../types'
 
 // ============================================================================
 // Form Schema
 // ============================================================================
 
-export function getApiKeyFormSchema(t: TFunction) {
+export function getApiKeyFormSchema(
+  t: TFunction,
+  finiteBudgetRequired = false,
+  policyManaged = false,
+  policyReasonRequired = false
+) {
   return z
     .object({
       name: z.string().min(1, t('Please enter a name')),
@@ -40,20 +45,56 @@ export function getApiKeyFormSchema(t: TFunction) {
       group: z.string().optional(),
       cross_group_retry: z.boolean().optional(),
       tokenCount: z.number().min(1).optional(),
+      max_rpm: z.number().int().min(1),
+      max_tpm: z.number().int().min(1),
+      max_concurrency: z.number().int().min(1),
+      policy_reason: z.string().max(255).optional(),
     })
     .superRefine((data, ctx) => {
+      if (finiteBudgetRequired && data.unlimited_quota) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['unlimited_quota'],
+          message: t('Virtual keys require a finite budget'),
+        })
+        return
+      }
+
       if (data.unlimited_quota) {
         return
       }
 
+      if (policyManaged && data.model_limits.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['model_limits'],
+          message: t('Select at least one supported model'),
+        })
+      }
+
+      if (
+        policyReasonRequired &&
+        (!data.policy_reason || data.policy_reason.trim().length < 3)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['policy_reason'],
+          message: t('Enter a change reason'),
+        })
+      }
+
       if (
         data.remain_quota_dollars === undefined ||
-        data.remain_quota_dollars < 0
+        (finiteBudgetRequired
+          ? parseQuotaFromDollars(data.remain_quota_dollars) <= 0
+          : data.remain_quota_dollars < 0)
       ) {
         ctx.addIssue({
           code: 'custom',
           path: ['remain_quota_dollars'],
-          message: t('Quota must be zero or greater'),
+          message: finiteBudgetRequired
+            ? t('Quota must be greater than zero')
+            : t('Quota must be zero or greater'),
         })
       }
     })
@@ -75,15 +116,30 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   group: DEFAULT_GROUP,
   cross_group_retry: true,
   tokenCount: 1,
+  max_rpm: 60,
+  max_tpm: 100000,
+  max_concurrency: 2,
+  policy_reason: '',
 }
 
+type PolicyDefaults = Pick<
+  ApiKeyFormValues,
+  'max_rpm' | 'max_tpm' | 'max_concurrency'
+>
+
 export function getApiKeyFormDefaultValues(
-  defaultUseAutoGroup: boolean
+  defaultUseAutoGroup: boolean,
+  finiteBudgetRequired = false,
+  policyDefaults?: PolicyDefaults
 ): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
     group: defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP,
     cross_group_retry: defaultUseAutoGroup,
+    unlimited_quota: finiteBudgetRequired
+      ? false
+      : API_KEY_FORM_DEFAULT_VALUES.unlimited_quota,
+    ...policyDefaults,
   }
 }
 
@@ -118,7 +174,8 @@ export function transformFormDataToPayload(
  * Transform API key data to form defaults
  */
 export function transformApiKeyToFormDefaults(
-  apiKey: ApiKey
+  apiKey: ApiKey,
+  policy?: VirtualKeyPolicy
 ): ApiKeyFormValues {
   return {
     name: apiKey.name,
@@ -137,5 +194,10 @@ export function transformApiKeyToFormDefaults(
     group: apiKey.group || DEFAULT_GROUP,
     cross_group_retry: !!apiKey.cross_group_retry,
     tokenCount: 1,
+    max_rpm: policy?.max_rpm ?? API_KEY_FORM_DEFAULT_VALUES.max_rpm,
+    max_tpm: policy?.max_tpm ?? API_KEY_FORM_DEFAULT_VALUES.max_tpm,
+    max_concurrency:
+      policy?.max_concurrency ?? API_KEY_FORM_DEFAULT_VALUES.max_concurrency,
+    policy_reason: '',
   }
 }

@@ -272,6 +272,16 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&QuotaLedgerEntry{},
+		&YanCoreSubjectGrant{},
+		&YanCoreApplicationSession{},
+		&YanCoreCampaign{},
+		&YanCoreRedeemCode{},
+		&YanCoreEntitlement{},
+		&YanCoreEntitlementClaim{},
+		&YanCoreEntitlementLedgerEntry{},
+		&YanCoreVirtualKeyPolicy{},
+		&YanCoreVirtualKeyPolicyRevision{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -303,6 +313,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -326,6 +339,16 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&QuotaLedgerEntry{}, "QuotaLedgerEntry"},
+		{&YanCoreSubjectGrant{}, "YanCoreSubjectGrant"},
+		{&YanCoreApplicationSession{}, "YanCoreApplicationSession"},
+		{&YanCoreCampaign{}, "YanCoreCampaign"},
+		{&YanCoreRedeemCode{}, "YanCoreRedeemCode"},
+		{&YanCoreEntitlement{}, "YanCoreEntitlement"},
+		{&YanCoreEntitlementClaim{}, "YanCoreEntitlementClaim"},
+		{&YanCoreEntitlementLedgerEntry{}, "YanCoreEntitlementLedgerEntry"},
+		{&YanCoreVirtualKeyPolicy{}, "YanCoreVirtualKeyPolicy"},
+		{&YanCoreVirtualKeyPolicyRevision{}, "YanCoreVirtualKeyPolicyRevision"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -374,6 +397,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := BackfillQuotaLedgerOpeningBalances(); err != nil {
+		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

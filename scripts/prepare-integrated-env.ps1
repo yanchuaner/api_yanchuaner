@@ -1,11 +1,16 @@
 param(
   [string]$WebRepo = (Join-Path $PSScriptRoot "..\..\web_yanchuaner"),
-  [string]$AiRepo = (Join-Path $PSScriptRoot "..\..\ai_yanchuaner")
+  [string]$AiRepo = (Join-Path $PSScriptRoot "..\..\ai_yanchuaner"),
+  [string]$ApiEnvFile = ""
 )
 
 $ErrorActionPreference = "Stop"
 $apiRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$apiEnv = Join-Path $apiRoot "deploy\.env"
+$apiEnv = if ([string]::IsNullOrWhiteSpace($ApiEnvFile)) {
+  Join-Path $apiRoot "deploy\.env"
+} else {
+  [System.IO.Path]::GetFullPath($ApiEnvFile)
+}
 $webEnv = Join-Path $WebRepo ".env"
 $aiEnv = Join-Path $AiRepo ".env"
 
@@ -61,7 +66,7 @@ function Set-DotEnvValues([string]$Path, [hashtable]$Values) {
 }
 
 if (-not (Test-Path -LiteralPath $apiEnv)) {
-  & (Join-Path $PSScriptRoot "generate-deploy-env.ps1")
+  & (Join-Path $PSScriptRoot "generate-deploy-env.ps1") -OutputPath $apiEnv
 }
 if (-not (Test-Path -LiteralPath $webEnv)) {
   throw "Missing main-site environment file: $webEnv"
@@ -76,6 +81,10 @@ $oauthSecret = $apiValues["YANCHUANER_OAUTH_CLIENT_SECRET"]
 if ([string]::IsNullOrWhiteSpace($oauthSecret)) { $oauthSecret = New-UrlSafeSecret 48 }
 $aiOAuthSecret = $apiValues["YANCHUANER_AI_OAUTH_CLIENT_SECRET"]
 if ([string]::IsNullOrWhiteSpace($aiOAuthSecret)) { $aiOAuthSecret = New-UrlSafeSecret 48 }
+$aiWebOAuthSecret = $apiValues["YANCHUANER_AI_WEB_OAUTH_CLIENT_SECRET"]
+if ([string]::IsNullOrWhiteSpace($aiWebOAuthSecret)) { $aiWebOAuthSecret = New-UrlSafeSecret 48 }
+$subjectExchangeSecret = $apiValues["YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET"]
+if ([string]::IsNullOrWhiteSpace($subjectExchangeSecret)) { $subjectExchangeSecret = New-UrlSafeSecret 48 }
 $oauthSigningKey = $webValues["YANCHUANER_OAUTH_SIGNING_KEY"]
 if ([string]::IsNullOrWhiteSpace($oauthSigningKey)) { $oauthSigningKey = New-RsaPrivateKeyBase64 }
 $rootPassword = $apiValues["NEW_API_ROOT_PASSWORD"]
@@ -97,6 +106,15 @@ Set-DotEnvValues $apiEnv @{
   YANCHUANER_OAUTH_CLIENT_SECRET = $oauthSecret
   YANCHUANER_AI_OAUTH_CLIENT_ID = "ai-yanchuaner"
   YANCHUANER_AI_OAUTH_CLIENT_SECRET = $aiOAuthSecret
+  YANCHUANER_AI_WEB_OAUTH_CLIENT_ID = "ai-web-yanchuaner"
+  YANCHUANER_AI_WEB_OAUTH_CLIENT_SECRET = $aiWebOAuthSecret
+  YANCHUANER_SUBJECT_EXCHANGE_ENABLED = "false"
+  YANCHUANER_SUBJECT_EXCHANGE_CLIENT_ID = "ai-yancore-bff"
+  YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET = $subjectExchangeSecret
+  YANCHUANER_SUBJECT_EXCHANGE_USERINFO_URL = "http://host.docker.internal:3000/api/oauth/userinfo"
+  YANCHUANER_SUBJECT_EXCHANGE_ALLOW_INSECURE_HTTP = "true"
+  YANCHUANER_AI_WEB_SESSION_QUOTA = "50000"
+  YANCHUANER_AI_WEB_MODELS = "gpt-4.1-mini,deepseek-chat"
   WEB_MAIN_PUBLIC_URL = "http://localhost:3000"
   WEB_MAIN_INTERNAL_URL = "http://host.docker.internal:3000"
   LITELLM_PUBLIC_URL = "http://127.0.0.1:4000"
@@ -122,6 +140,9 @@ Set-DotEnvValues $webEnv @{
   YANCHUANER_AI_OAUTH_CLIENT_ID = "ai-yanchuaner"
   YANCHUANER_AI_OAUTH_CLIENT_SECRET = $aiOAuthSecret
   YANCHUANER_AI_OAUTH_REDIRECT_URI = "http://localhost:3001/oauth/oidc/callback"
+  YANCHUANER_AI_WEB_OAUTH_CLIENT_ID = "ai-web-yanchuaner"
+  YANCHUANER_AI_WEB_OAUTH_CLIENT_SECRET = $aiWebOAuthSecret
+  YANCHUANER_AI_WEB_OAUTH_REDIRECT_URI = "http://localhost:3002/api/auth/callback"
   AI_WORKSPACE_URL = "http://localhost:3001"
   API_PLATFORM_URL = "http://localhost:3101"
   NEXT_PUBLIC_AI_WORKSPACE_URL = "http://localhost:3001"
@@ -130,6 +151,8 @@ Set-DotEnvValues $webEnv @{
 }
 
 $aiValues = Read-DotEnv $aiEnv
+$aiWebSessionSecret = $aiValues["AI_WEB_SESSION_SECRET"]
+if ([string]::IsNullOrWhiteSpace($aiWebSessionSecret)) { $aiWebSessionSecret = New-UrlSafeSecret 48 }
 $openWebUiApiKey = $aiValues["OPENWEBUI_API_KEY"]
 if ([string]::IsNullOrWhiteSpace($openWebUiApiKey)) {
   $openWebUiApiKey = $aiValues["OPENWEBUI_LITELLM_KEY"]
@@ -140,7 +163,18 @@ if ([string]::IsNullOrWhiteSpace($openWebUiApiKey)) {
 
 Set-DotEnvValues $aiEnv @{
   AI_CORE_NETWORK = "yanchuaner-ai-core"
+  AI_WEB_HOST_PORT = "3002"
+  AI_WEB_PUBLIC_URL = "http://localhost:3002"
+  AI_WEB_SESSION_SECRET = $aiWebSessionSecret
+  AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP = "true"
   API_GATEWAY_BASE_URL = "http://api-gateway:3000/v1"
+  YANCORE_API_BASE_URL = "http://api-gateway:3000"
+  YANCORE_OIDC_ISSUER = "http://localhost:3000"
+  YANCORE_OIDC_DISCOVERY_URL = "http://host.docker.internal:3000/api/oauth/.well-known/openid-configuration"
+  YANCORE_OIDC_CLIENT_ID = "ai-web-yanchuaner"
+  YANCORE_OIDC_CLIENT_SECRET = $aiWebOAuthSecret
+  YANCORE_SUBJECT_EXCHANGE_CLIENT_ID = "ai-yancore-bff"
+  YANCORE_SUBJECT_EXCHANGE_CLIENT_SECRET = $subjectExchangeSecret
   OPENWEBUI_API_KEY = $openWebUiApiKey
   OPENWEBUI_IMAGE_API_KEY = $openWebUiApiKey
   OPENWEBUI_HOST_PORT = "3001"

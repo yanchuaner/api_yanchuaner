@@ -43,6 +43,14 @@ func TestMain(m *testing.M) {
 		&model.Task{},
 		&model.User{},
 		&model.Token{},
+		&model.QuotaLedgerEntry{},
+		&model.YanCoreVirtualKeyPolicy{},
+		&model.YanCoreVirtualKeyPolicyRevision{},
+		&model.YanCoreCampaign{},
+		&model.YanCoreRedeemCode{},
+		&model.YanCoreEntitlement{},
+		&model.YanCoreEntitlementClaim{},
+		&model.YanCoreEntitlementLedgerEntry{},
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
@@ -66,6 +74,14 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
+		model.DB.Exec("DELETE FROM quota_ledger_entries")
+		model.DB.Exec("DELETE FROM yan_core_virtual_key_policy_revisions")
+		model.DB.Exec("DELETE FROM yan_core_virtual_key_policies")
+		model.DB.Exec("DELETE FROM yan_core_entitlement_ledger_entries")
+		model.DB.Exec("DELETE FROM yan_core_entitlement_claims")
+		model.DB.Exec("DELETE FROM yan_core_entitlements")
+		model.DB.Exec("DELETE FROM yan_core_redeem_codes")
+		model.DB.Exec("DELETE FROM yan_core_campaigns")
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")

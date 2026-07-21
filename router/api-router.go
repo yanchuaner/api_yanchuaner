@@ -236,11 +236,53 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
-			tokenRoute.POST("/", controller.AddToken)
+			tokenRoute.POST("/", middleware.DisableCache(), controller.AddToken)
 			tokenRoute.PUT("/", controller.UpdateToken)
 			tokenRoute.DELETE("/:id", controller.DeleteToken)
 			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
 			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
+		}
+		yanchuanerRoute := apiRouter.Group("/yanchuaner")
+		yanchuanerRoute.Use(middleware.UserAuth())
+		{
+			yanchuanerRoute.GET("/quota-ledger", controller.GetMyQuotaLedger)
+		}
+		yanCoreRoute := apiRouter.Group("/yancore")
+		{
+			yanCoreRoute.POST("/subject-exchange", middleware.CriticalRateLimit(), controller.ExchangeYanCoreSubjectGrant)
+			yanCoreRoute.POST("/grants/introspect", middleware.CriticalRateLimit(), controller.IntrospectYanCoreSubjectGrant)
+			yanCoreUserRoute := yanCoreRoute.Group("/grants")
+			yanCoreUserRoute.Use(middleware.UserAuth())
+			{
+				yanCoreUserRoute.POST("/", middleware.CriticalRateLimit(), controller.IssueYanCoreSubjectGrant)
+				yanCoreUserRoute.GET("/", controller.ListYanCoreSubjectGrants)
+				yanCoreUserRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.RevokeYanCoreSubjectGrant)
+			}
+			yanCoreEntitlementRoute := yanCoreRoute.Group("/entitlements")
+			yanCoreEntitlementRoute.Use(middleware.UserAuth())
+			{
+				yanCoreEntitlementRoute.POST("/claim", middleware.CriticalRateLimit(), controller.ClaimYanCoreEntitlement)
+				yanCoreEntitlementRoute.GET("/", controller.ListYanCoreEntitlements)
+			}
+			yanCoreVirtualKeyPolicyRoute := yanCoreRoute.Group("/virtual-key-policies")
+			yanCoreVirtualKeyPolicyRoute.Use(middleware.UserAuth())
+			{
+				yanCoreVirtualKeyPolicyRoute.GET("/:token_id", controller.GetYanCoreVirtualKeyPolicy)
+				yanCoreVirtualKeyPolicyRoute.PUT("/:token_id", middleware.CriticalRateLimit(), controller.UpdateYanCoreVirtualKeyPolicy)
+				yanCoreVirtualKeyPolicyRoute.GET("/:token_id/revisions", controller.ListYanCoreVirtualKeyPolicyRevisions)
+			}
+			yanCoreVirtualKeyPolicyRolloutRoute := yanCoreRoute.Group("/virtual-key-policies/rollout")
+			yanCoreVirtualKeyPolicyRolloutRoute.Use(middleware.AdminAuth())
+			{
+				yanCoreVirtualKeyPolicyRolloutRoute.GET("/", controller.GetYanCoreVirtualKeyPolicyRolloutReport)
+				yanCoreVirtualKeyPolicyRolloutRoute.POST("/", middleware.CriticalRateLimit(), controller.ApplyYanCoreVirtualKeyPolicyRollout)
+			}
+			yanCoreCampaignRoute := yanCoreRoute.Group("/campaigns")
+			yanCoreCampaignRoute.Use(middleware.AdminAuth())
+			{
+				yanCoreCampaignRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateYanCoreCampaign)
+				yanCoreCampaignRoute.POST("/:id/redeem-codes", middleware.CriticalRateLimit(), controller.CreateYanCoreRedeemCodes)
+			}
 		}
 
 		usageRoute := apiRouter.Group("/usage")

@@ -1,12 +1,14 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -213,6 +215,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 			}
 			s.tokenConsumed = 0
 		}
+		if errors.Is(err, model.ErrYanCoreEntitlementInsufficient) || errors.Is(err, model.ErrYanCoreCampaignExpired) || errors.Is(err, model.ErrQuotaLedgerOverdraw) {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
@@ -232,10 +237,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 func (s *BillingSession) reserveFunding(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
-		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+		if err := funding.reserve(delta); err != nil {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
-		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
@@ -248,6 +252,11 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			)
 		}
 		return nil
+	case *YanCoreEntitlementFunding:
+		if err := funding.reserve(delta); err != nil {
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		return nil
 	default:
 		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -256,14 +265,16 @@ func (s *BillingSession) reserveFunding(delta int) error {
 func (s *BillingSession) rollbackFundingReserve(delta int) {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
-		if err := model.IncreaseUserQuota(funding.userId, delta, false); err != nil {
+		if err := funding.rollbackReserve(delta); err != nil {
 			common.SysLog("error rolling back wallet funding reserve: " + err.Error())
-		} else {
-			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
+		}
+	case *YanCoreEntitlementFunding:
+		if err := funding.rollbackReserve(delta); err != nil {
+			common.SysLog("error rolling back campaign funding reserve: " + err.Error())
 		}
 	}
 }
@@ -309,6 +320,8 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 		// 2. SubscriptionFunding.PreConsume 忽略参数，始终用 s.amount 预扣
 		// 3. 若信任旁路将 effectiveQuota 设为 0，会导致 preConsumedQuota 与实际订阅预扣不一致
 		return false
+	case BillingSourceCampaign:
+		return false
 	default:
 		return false
 	}
@@ -346,9 +359,40 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
+	tryCampaign := func() (*BillingSession, *types.NewAPIError, bool) {
+		if !yanCoreCampaignFundingEnabled() || preConsumedQuota <= 0 {
+			return nil, nil, false
+		}
+		provider := yanCoreProviderForRelay(relayInfo)
+		entitlement, err := model.FindYanCoreEntitlement(relayInfo.UserId, provider, relayInfo.OriginModelName, preConsumedQuota)
+		if errors.Is(err, model.ErrYanCoreEntitlementNotFound) {
+			return nil, nil, false
+		}
+		relayInfo.BillingSource = BillingSourceCampaign
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog()), true
+		}
+		if relayInfo.ForcePreConsume {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("campaign entitlement billing does not support asynchronous requests"),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			), true
+		}
+		session := &BillingSession{relayInfo: relayInfo, funding: &YanCoreEntitlementFunding{userId: relayInfo.UserId, tokenId: relayInfo.TokenId, requestId: relayInfo.RequestId, entitlementId: entitlement.Id}}
+		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
+			return nil, apiErr, true
+		}
+		return session, nil, true
+	}
+	if session, apiErr, selected := tryCampaign(); selected {
+		return session, apiErr
+	}
+
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
-		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+		userQuota, err := model.GetWalletFundingBalance(relayInfo.UserId)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -368,7 +412,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 		session := &BillingSession{
 			relayInfo: relayInfo,
-			funding:   &WalletFunding{userId: relayInfo.UserId},
+			funding: &WalletFunding{
+				userId:    relayInfo.UserId,
+				tokenId:   relayInfo.TokenId,
+				requestId: relayInfo.RequestId,
+			},
 		}
 		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
 			return nil, apiErr
@@ -439,4 +487,25 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		return session, nil
 	}
+}
+
+func yanCoreProviderForRelay(relayInfo *relaycommon.RelayInfo) string {
+	if relayInfo == nil {
+		return ""
+	}
+	return YanCoreProviderForRequest(relayInfo.OriginModelName, relayInfo.ChannelType)
+}
+
+// YanCoreProviderForRequest maps the first-party provider vocabulary before
+// LiteLLM routing. Model prefixes take precedence because DeepSeek commonly
+// arrives through an OpenAI-compatible channel.
+func YanCoreProviderForRequest(modelName string, channelType int) string {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	switch {
+	case strings.HasPrefix(modelName, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(modelName, "gpt-"), strings.HasPrefix(modelName, "o1"), strings.HasPrefix(modelName, "o3"), strings.HasPrefix(modelName, "o4"):
+		return "openai"
+	}
+	return strings.ToLower(constant.ChannelTypeNames[channelType])
 }

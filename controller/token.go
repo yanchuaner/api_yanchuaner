@@ -31,6 +31,11 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 	return maskedTokens
 }
 
+type tokenCreateRequest struct {
+	model.Token
+	YanCorePolicy *model.YanCoreVirtualKeyPolicyConfig `json:"yancore_policy"`
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -89,6 +94,13 @@ func GetTokenKey(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if token.KeyHashEnabled {
+		c.JSON(http.StatusGone, gin.H{
+			"success": false,
+			"message": "This virtual key was shown only once when it was created.",
+		})
+		return
+	}
 	common.ApiSuccess(c, gin.H{
 		"key": token.GetFullKey(),
 	})
@@ -135,7 +147,7 @@ func GetTokenUsage(c *gin.Context) {
 	}
 	tokenKey := parts[1]
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	token, err := model.GetTokenByPresentedKey(strings.TrimPrefix(tokenKey, "sk-"), false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
@@ -165,14 +177,41 @@ func GetTokenUsage(c *gin.Context) {
 }
 
 func AddToken(c *gin.Context) {
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+	request := tokenCreateRequest{}
+	err := c.ShouldBindJSON(&request)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	token := request.Token
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		return
+	}
+	if model.IsReservedYanCoreTokenName(token.Name) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Token names beginning with yancore: are reserved for application credentials.",
+		})
+		return
+	}
+	hashedKeyEnabled := common.GetEnvOrDefaultBool("YANCHUANER_HASHED_KEYS_ENABLED", false)
+	if hashedKeyEnabled && strings.TrimSpace(token.Name) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if hashedKeyEnabled && (token.UnlimitedQuota || token.RemainQuota <= 0) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Virtual keys require a positive finite budget.",
+		})
+		return
+	}
+	if hashedKeyEnabled && model.YanCoreVirtualKeyPolicyEnabled() && (!token.ModelLimitsEnabled || strings.TrimSpace(token.ModelLimits) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Virtual keys require an explicit model allowlist when YanCore policy enforcement is enabled.",
+		})
 		return
 	}
 	// 非无限额度时，检查额度值是否超出有效范围
@@ -201,16 +240,37 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
-	key, err := common.GenerateKey()
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
-		common.SysLog("failed to generate token key: " + err.Error())
-		return
+	key := ""
+	oneTimeKey := ""
+	keyDisplayPrefix := ""
+	keyDisplaySuffix := ""
+	if hashedKeyEnabled {
+		presented, storedHash, prefix, suffix, err := model.GenerateVirtualKey()
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
+			common.SysLog("failed to generate virtual key: " + err.Error())
+			return
+		}
+		key = storedHash
+		oneTimeKey = "sk-" + presented
+		keyDisplayPrefix = prefix
+		keyDisplaySuffix = suffix
+	} else {
+		var err error
+		key, err = common.GenerateKey()
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
+			common.SysLog("failed to generate token key: " + err.Error())
+			return
+		}
 	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
+		KeyHashEnabled:     hashedKeyEnabled,
+		KeyDisplayPrefix:   keyDisplayPrefix,
+		KeyDisplaySuffix:   keyDisplaySuffix,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,
@@ -222,15 +282,33 @@ func AddToken(c *gin.Context) {
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
-	err = cleanToken.Insert()
+	var policy *model.YanCoreVirtualKeyPolicy
+	if hashedKeyEnabled && (model.YanCoreVirtualKeyPolicyEnabled() || request.YanCorePolicy != nil) {
+		policy, err = model.BuildYanCoreVirtualKeyPolicy(&cleanToken, request.YanCorePolicy)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		err = model.CreateYanCoreVirtualKeyWithPolicy(&cleanToken, policy, cleanToken.UserId, "initial virtual key policy")
+	} else {
+		err = cleanToken.Insert()
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"success": true,
 		"message": "",
-	})
+	}
+	if hashedKeyEnabled {
+		response["data"] = gin.H{
+			"key":    oneTimeKey,
+			"token":  buildMaskedTokenResponse(&cleanToken),
+			"policy": policy,
+		}
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func DeleteToken(c *gin.Context) {
@@ -274,6 +352,20 @@ func UpdateToken(c *gin.Context) {
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if cleanToken.KeyHashEnabled && model.YanCoreVirtualKeyPolicyEnabled() {
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": "Policy-managed virtual keys must be updated through the YanCore policy endpoint.",
+		})
+		return
+	}
+	if statusOnly == "" && cleanToken.KeyHashEnabled && (token.UnlimitedQuota || token.RemainQuota <= 0) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Virtual keys require a positive finite budget.",
+		})
 		return
 	}
 	if token.Status == common.TokenStatusEnabled {
@@ -353,6 +445,9 @@ func GetTokenKeysBatch(c *gin.Context) {
 	}
 	keysMap := make(map[int]string)
 	for _, t := range tokens {
+		if t.KeyHashEnabled {
+			continue
+		}
 		keysMap[t.Id] = t.GetFullKey()
 	}
 	common.ApiSuccess(c, gin.H{"keys": keysMap})

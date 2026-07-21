@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMutation } from '@tanstack/react-query'
 import type { Row } from '@tanstack/react-table'
 import {
   Trash2,
@@ -28,7 +29,7 @@ import {
   Link,
   Loader2,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -50,6 +51,7 @@ import {
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
+import { useStatus } from '@/hooks/use-status'
 import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
@@ -79,6 +81,7 @@ export function DataTableRowActions<TData>({
   row,
 }: DataTableRowActionsProps<TData>) {
   const { t } = useTranslation()
+  const { status } = useStatus()
   const apiKey = apiKeySchema.parse(row.original)
   const {
     setOpen,
@@ -90,8 +93,18 @@ export function DataTableRowActions<TData>({
     loadingKeys,
   } = useApiKeys()
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
+  const policyEnabled =
+    status?.yancore_virtual_key_policy_enabled === true ||
+    status?.data?.yancore_virtual_key_policy_enabled === true
   const { chatPresets, serverAddress } = useChatPresets()
-  const [isTogglingStatus, setIsTogglingStatus] = useState(false)
+  const statusMutation = useMutation({
+    mutationFn: (input: {
+      id: number
+      status: number
+      policyManaged: boolean
+    }) => updateApiKeyStatus(input.id, input.status, input.policyManaged),
+  })
+  const isTogglingStatus = statusMutation.isPending
   const resolvedRealKey = resolvedKeys[apiKey.id]
   const isRealKeyLoading = Boolean(loadingKeys[apiKey.id])
 
@@ -100,19 +113,34 @@ export function DataTableRowActions<TData>({
 
   const handleMenuOpenChange = useCallback(
     (open: boolean) => {
-      if (open && !resolvedRealKey && !isRealKeyLoading) {
+      if (
+        open &&
+        !apiKey.key_hash_enabled &&
+        !resolvedRealKey &&
+        !isRealKeyLoading
+      ) {
         void resolveRealKey(apiKey.id)
       }
     },
-    [apiKey.id, isRealKeyLoading, resolvedRealKey, resolveRealKey]
+    [
+      apiKey.id,
+      apiKey.key_hash_enabled,
+      isRealKeyLoading,
+      resolvedRealKey,
+      resolveRealKey,
+    ]
   )
 
   const getCachedRealKey = useCallback(() => {
+    if (apiKey.key_hash_enabled) {
+      toast.info(t('This key was shown only once when it was created.'))
+      return null
+    }
     if (resolvedRealKey) return resolvedRealKey
     void resolveRealKey(apiKey.id)
     toast.info(t('API key is loading, please try again in a moment'))
     return null
-  }, [apiKey.id, resolvedRealKey, resolveRealKey, t])
+  }, [apiKey.id, apiKey.key_hash_enabled, resolvedRealKey, resolveRealKey, t])
 
   const handleOpenChatPreset = useCallback(
     async (preset: ChatPreset) => {
@@ -163,9 +191,12 @@ export function DataTableRowActions<TData>({
       ? API_KEY_STATUS.DISABLED
       : API_KEY_STATUS.ENABLED
 
-    setIsTogglingStatus(true)
     try {
-      const result = await updateApiKeyStatus(apiKey.id, newStatus)
+      const result = await statusMutation.mutateAsync({
+        id: apiKey.id,
+        status: newStatus,
+        policyManaged: policyEnabled && apiKey.key_hash_enabled,
+      })
       if (result.success) {
         const message = isEnabled
           ? t(SUCCESS_MESSAGES.API_KEY_DISABLED)
@@ -177,8 +208,6 @@ export function DataTableRowActions<TData>({
       }
     } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
-    } finally {
-      setIsTogglingStatus(false)
     }
   }
 
@@ -239,6 +268,7 @@ export function DataTableRowActions<TData>({
         onOpenChange={handleMenuOpenChange}
       >
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = getCachedRealKey()
             if (!realKey) return
@@ -252,6 +282,7 @@ export function DataTableRowActions<TData>({
           </DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = getCachedRealKey()
             if (!realKey) return
@@ -270,6 +301,7 @@ export function DataTableRowActions<TData>({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={apiKey.key_hash_enabled}
           onClick={async () => {
             const realKey = await resolveRealKey(apiKey.id)
             if (!realKey) return
@@ -285,7 +317,9 @@ export function DataTableRowActions<TData>({
         </DropdownMenuItem>
         {hasChatPresets && (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger disabled={apiKey.key_hash_enabled}>
+              {t('Chat')}
+            </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {chatPresets.map((preset) => (
                 <DropdownMenuItem
