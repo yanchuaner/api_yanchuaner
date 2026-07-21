@@ -19,7 +19,8 @@
 
 ## 当前能力
 
-- 已认证在校生、校友与教师通过“燕中统一身份”登录。
+- 主站 OAuth/OIDC 提供方已在 WSL 隔离环境通过 45 项真实 HTTP 合同；New API 与 Open WebUI 的消费者回调仍须单独验收，不能由发现文档检查代替。
+- 已认证在校生、校友与教师的“燕中统一身份”映射、绑定和下游登录代码已实现。
 - 主站管理员同步为燕中 API 管理员；其他 OAuth 提供方不能通过角色字段提权。
 - 新成员首期公益额度为 `$1.00 / ¥7.00`。
 - 用户按应用/场景创建和撤销虚拟 Key；新 Key 只展示一次，服务端只保存哈希与脱敏片段。
@@ -68,6 +69,8 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 # 开启并重启本地策略栈后，验证创建、编辑、修订和旧接口拒绝
 .\scripts\verify-virtual-key-policy.ps1
 ```
+
+`bootstrap-integrated-stack.ps1` 只预检主站 discovery、JWKS 与 Open WebUI OIDC provider 配置，不会模拟成员完成回调。主站提供方合同按 `web_yanchuaner/docs/oauth-provider.md` 执行；New API 和 Open WebUI 还需分别使用隔离测试账号完成真实登录、重复登录和角色同步验收。
 
 集成栈入口：
 
