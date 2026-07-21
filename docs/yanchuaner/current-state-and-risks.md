@@ -63,10 +63,10 @@ flowchart LR
 | 优先级 | 风险 | 当前证据与门禁 |
 | --- | --- | --- |
 | P0 | Open WebUI 品牌许可 | `0.10.2` 许可证仅在滚动 30 日不超过 50 名最终用户、书面许可或企业许可三种条件之一满足时允许改动品牌。公开预览前必须归档证据；否则恢复合规品牌或限制人数。 |
-| P0 | 原创产品入口尚未完成 | 阶段 1 已开始实现 YanCore 主体协议；缺少 Open WebUI 品牌授权不阻止自主研发，但 Open WebUI 不能继续作为燕中原创产品入口公开扩张。 |
-| P0 | 集成生产验收未完成 | SQLite 镜像启动迁移、PostgreSQL 16.14 流水/Token 列迁移、完整 Docker 镜像构建和主站提供方 45 项 WSL HTTP 合同已通过；New API 真实回调已有独立验收脚本，实跑证据随阶段 3B 记录。Open WebUI 回调、OpenAI/DeepSeek 调用、MySQL 兼容、备份恢复和回滚演练仍未完成，完成前不得上线。 |
+| P0 | 原创产品入口尚未达到预览范围 | 自主 AI Web 已完成主站 OIDC、YanCore 主体交换、短期应用 Key、加密会话和 SSE BFF；文件、搜索、知识库、助手与管理能力仍由 Open WebUI 过渡承载，不能把过渡底座声明为燕中原创实现。 |
+| P0 | 集成生产验收未完成 | SQLite 镜像启动迁移、PostgreSQL 16.14 流水/Token 列迁移、MySQL 8.0 定向测试、完整 Docker 镜像构建、主站提供方 45 项 WSL HTTP 合同，以及 New API、Open WebUI、自主 AI Web 三条真实回调均已通过。OpenAI/DeepSeek 真实调用、备份恢复和回滚演练仍未完成，完成前不得上线。 |
 | P0 | 旧 Key 仍为明文 | 本次只保证新建燕中虚拟 Key 为哈希。既有 Token 必须盘点、轮换和撤销，不能原地转换后继续向用户展示同一秘密。 |
-| P0 | AI 工作台真实调用尚待环境验收 | 自主 AI Web 已实现逐用户短期 Key、SSE 代理和标准扣费/日志路径；真实 OpenAI/DeepSeek、失败退款、request_id 查询和并发耗尽仍须在集成环境逐项验收。Open WebUI 服务 Key 仍只能形成服务账户账单。 |
+| P0 | AI 工作台真实调用尚待环境验收 | 自主 AI Web 的独立 OIDC 客户端、同一主体复用、哈希化短期 Key、模型/预算/时限边界和无浏览器密钥暴露已通过真实本地回调；真实 OpenAI/DeepSeek、失败退款、request_id 查询和并发耗尽仍须在集成环境逐项验收。Open WebUI 服务 Key 仍只能形成服务账户账单。 |
 | P0 | 许可仍待法律与运营确认 | `ai_yanchuaner` 已补仓库许可状态、第三方许可全文、来源矩阵和安全/贡献流程；运营主体、自主代码最终许可证、Open WebUI 法律声明页和品牌授权仍须人工确认。 |
 | P1 | 每 Key 限流尚未覆盖异步任务 | 标准同步文本 Relay 已实现 Redis 原子 RPM/TPM/并发与故障 fail-closed；异步任务目前只复核供应商，开放 Agent 异步能力前必须持久化预留并补退款语义。 |
 | P1 | 权益来源仍在扩展 | 活动和兑换码已接入独立 YanCore 表、`campaign` funding source、来源隔离及可开关的同步预扣/结算/退款；异步任务、目标人群、管理员 UI、每 Key 来源策略和 BYOK 尚未完成，开关默认关闭。 |

@@ -213,6 +213,17 @@ func ExchangeYanCoreSubjectGrant(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "YanCore ai-web credential could not be issued."})
 		return
 	}
+	recordUserSecurityAudit(c, user.Id, "yancore.subject-exchange.issue", map[string]interface{}{
+		"target_user_id": user.Id,
+		"grant_id":       grant.Id,
+		"token_id":       sessionToken.Id,
+		"application":    grant.Application,
+		"audience":       grant.Audience,
+		"scopes":         grant.Scopes,
+		"expires_at":     grant.ExpiresAt,
+		"quota_units":    sessionToken.RemainQuota,
+		"models":         sessionToken.GetModelLimits(),
+	})
 	common.ApiSuccess(c, gin.H{
 		"grant": token,
 		"credential": gin.H{

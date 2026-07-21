@@ -60,7 +60,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `controller/yanchuaner_quota_ledger.go` | 独立流水查询与管理员发放适配 | 随仓库 AGPLv3-or-later |
 | `service/yanchuaner_wallet_ledger_test.go` | 独立预扣、结算、退款行为证据 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_subject_grant.go`、`controller/yanchuaner_subject_grant.go` 及测试 | 独立主体、应用、受众、scope、短期签名、撤销和防跨应用重放协议 | 随仓库 AGPLv3-or-later |
-| `controller/yanchuaner_subject_exchange.go` 及测试 | 独立主站令牌复验、服务客户端鉴权、可信 OAuth 绑定与固定 AI Web 策略 | 随仓库 AGPLv3-or-later |
+| `controller/yanchuaner_subject_exchange.go` 及测试 | 独立主站令牌复验、服务客户端鉴权、可信 OAuth 绑定、固定 AI Web 策略和无密钥结构化审计 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_ai_session_key.go` 及测试 | 独立应用会话 Key 生命周期、并发会话指针、模型/预算边界、哈希存储与轮换策略 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_virtual_key_policy.go` 及测试 | 独立 Key 策略、供应商推导、版本修订、历史 Key 脱敏预检、显式安全回填和跨数据库事务设计 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_virtual_key_policy.go` | 独立的本人策略读取、带原因更新和修订查询，以及管理员预检/小批量回填接口 | 随仓库 AGPLv3-or-later |

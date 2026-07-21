@@ -2,7 +2,7 @@
 
 ## 目标
 
-首版只解决一条完整链路：已在主站完成邮箱验证和身份审核的在校生、校友与教师，通过主站 OAuth 登录 New API，领取受限开发者 Token，消费公益额度，经 LiteLLM 调用获授权的 OpenAI 或 DeepSeek 官方 API。Open WebUI 使用独立 OIDC 客户端登录同一身份源，不维护第二套公开注册体系。
+首版只解决一条完整链路：已在主站完成邮箱验证和身份审核的在校生、校友与教师，通过主站 OAuth 登录 New API，领取受限开发者 Token，消费公益额度，经 LiteLLM 调用获授权的 OpenAI 或 DeepSeek 官方 API。Open WebUI 与自主燕中 AI Web 分别使用独立 OIDC 客户端登录同一身份源，不维护第二套公开注册体系。
 
 ```text
 认证成员 / Agent
@@ -49,7 +49,7 @@ LiteLLM 数据面  ----->  网关 PostgreSQL
 
 主站只返回 `sub`、`preferred_username`、`name`、`email`、`email_verified` 和粗粒度 `role`。`role` 仅为 `admin`、`alumni`、`student`、`teacher` 之一；不返回毕业班级、联系方式、城市等成员资料。授权码 60 秒过期、只能消费一次并绑定 `client_id` 与精确 `redirect_uri`；访问令牌 5 分钟过期。
 
-浏览器授权端点使用主站公开地址；Docker 中的 New API 和 Open WebUI 必须通过容器可达的主站内部地址兑换令牌和读取用户信息。开发环境使用 `host.docker.internal:3000`，生产环境应统一使用受 TLS 保护的正式域名。New API 与 Open WebUI 使用不同客户端密钥，任一密钥泄露都可以单独轮换。主站 OIDC ID Token 使用持久化 RSA 私钥进行 RS256 签名，发现文档的 JWKS 只发布公钥；不得在重启时临时生成新密钥。
+浏览器授权端点使用主站公开地址；Docker 中的 New API、Open WebUI 和自主 AI Web 必须通过容器可达的主站内部地址兑换令牌和读取用户信息。开发环境使用 `host.docker.internal:3000`，生产环境应统一使用受 TLS 保护的正式域名。三类消费者使用不同 client ID 和 Secret，自主 AI Web 的 OIDC Secret 还必须与 YanCore 主体交换 Secret 分离，任一凭据泄露都可以单独轮换。主站 OIDC ID Token 使用持久化 RSA 私钥进行 RS256 签名，发现文档的 JWKS 只发布公钥；不得在重启时临时生成新密钥。
 
 New API 中配置字段映射：用户 ID `sub`、用户名 `preferred_username`、显示名 `name`、邮箱 `email`。首期 `NEW_USER_INITIAL_QUOTA=500000`，对应 `$1.00 / ¥7.00`；系统固定按 `1 USD = 7 CNY` 同时展示双币金额。Open WebUI 使用独立的有限共享 Token，不能设置无限额度，也不能在部署重启时自动补满。
 

@@ -49,6 +49,7 @@ var auditContentTemplates = map[string]string{
 
 	"subscription.plan_reset":                  "Reset active subscriptions for plan ${plan_id}",
 	"subscription.user_plan_reset":             "Reset active plan ${plan_id} subscriptions for user ${target_user_id}",
+	"yancore.subject-exchange.issue":           "Issued a bounded ${application} session for subject ${target_user_id}",
 	"yancore.virtual-key-policy.rollout.apply": "Applied virtual key policy rollout to ${count} keys; reason: ${reason}",
 }
 

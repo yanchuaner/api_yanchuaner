@@ -68,7 +68,7 @@ func TestExchangeYanCoreSubjectGrantRequiresTrustedBinding(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.CustomOAuthProvider{}, &model.UserOAuthBinding{}, &model.YanCoreSubjectGrant{}, &model.Token{}, &model.YanCoreApplicationSession{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.CustomOAuthProvider{}, &model.UserOAuthBinding{}, &model.YanCoreSubjectGrant{}, &model.Token{}, &model.YanCoreApplicationSession{}, &model.Log{}))
 
 	provider := &model.CustomOAuthProvider{Name: "Yanchuaner", Slug: "yanchuaner", Enabled: true}
 	require.NoError(t, db.Create(provider).Error)
@@ -131,6 +131,11 @@ func TestExchangeYanCoreSubjectGrantRequiresTrustedBinding(t *testing.T) {
 	assert.True(t, stored.ModelLimitsEnabled)
 	assert.Equal(t, "gpt-4.1-mini,deepseek-chat", stored.ModelLimits)
 	assert.Equal(t, success.Data.Credential.ExpiresAt, stored.ExpiredTime)
+	var audit model.Log
+	require.NoError(t, db.Where("user_id = ? AND type = ?", user.Id, model.LogTypeManage).Order("id DESC").First(&audit).Error)
+	assert.Contains(t, audit.Other, `"action":"yancore.subject-exchange.issue"`)
+	assert.False(t, strings.Contains(audit.Other, success.Data.Grant), "audit metadata must not contain the subject grant")
+	assert.False(t, strings.Contains(audit.Other, success.Data.Credential.AccessKey), "audit metadata must not contain the application key")
 
 	require.NoError(t, db.Delete(binding).Error)
 	request = httptest.NewRequest(http.MethodPost, "/api/yancore/subject-exchange", bytes.NewBufferString(`{"subject_token":"main-access-token","ttl":600}`))

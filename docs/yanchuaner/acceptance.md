@@ -29,6 +29,7 @@ New API 回调脚本默认只接受主站 `http://localhost:3000` 与隔离控�
 | OIDC 发现 | 宿主机和容器均可读取发现文档，且只声明 RS256 ID Token 签名 |
 | JWKS | 至少发布一个 RSA 公钥，不包含私钥参数 |
 | AI 登录 | Open WebUI 关闭本地注册，仅通过主站 OIDC 为认证校友自动建号 |
+| 客户端隔离 | New API、Open WebUI、自主 AI Web 使用三个不同 client ID 和 Secret；YanCore 主体交换使用第四个独立 Secret |
 | 临时账号 | 两条回调验收完成后删除主站、New API 和 Open WebUI 的临时账号 |
 
 ## 阶段 C：公益额度
