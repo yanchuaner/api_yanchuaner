@@ -536,7 +536,11 @@ func (user *User) Insert(inviterId int) error {
 			if err := user.prepareForInsert(tx); err != nil {
 				return err
 			}
-			user.Quota = common.QuotaForNewUser
+			if QuotaLedgerEnabled() {
+				user.Quota = 0
+			} else {
+				user.Quota = common.QuotaForNewUser
+			}
 			user.AffCode = common.GetRandomString(4)
 
 			// 初始化用户设置，包括默认的边栏配置
@@ -546,7 +550,13 @@ func (user *User) Insert(inviterId int) error {
 				user.SetSetting(defaultSetting)
 			}
 
-			return tx.Create(user).Error
+			if err := tx.Create(user).Error; err != nil {
+				return err
+			}
+			if QuotaLedgerEnabled() {
+				return recordInitialQuotaGrantWithTx(tx, user, common.QuotaForNewUser)
+			}
+			return nil
 		})
 	}); err != nil {
 		return err
@@ -600,7 +610,11 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		if err := user.prepareForInsert(tx); err != nil {
 			return err
 		}
-		user.Quota = common.QuotaForNewUser
+		if QuotaLedgerEnabled() {
+			user.Quota = 0
+		} else {
+			user.Quota = common.QuotaForNewUser
+		}
 		user.AffCode = common.GetRandomString(4)
 
 		// 初始化用户设置
@@ -609,7 +623,13 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			user.SetSetting(defaultSetting)
 		}
 
-		return tx.Create(user).Error
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		if QuotaLedgerEnabled() {
+			return recordInitialQuotaGrantWithTx(tx, user, common.QuotaForNewUser)
+		}
+		return nil
 	})
 }
 

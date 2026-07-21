@@ -264,9 +264,9 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := model.GetTokenByPresentedKey(key, false)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, model.ErrVirtualKeyInvalid) {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"success": false,
 					"message": common.TranslateMessage(c, i18n.MsgTokenInvalid),
@@ -461,6 +461,18 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
+	if model.YanCoreVirtualKeyPolicyEnabled() && token.KeyHashEnabled {
+		policy, err := model.GetYanCoreVirtualKeyPolicy(token.Id, token.UserId)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, "failed to load virtual key policy")
+			return err
+		}
+		if policy == nil || policy.Status != model.YanCoreVirtualKeyPolicyActive {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "virtual key policy is missing or disabled", types.ErrorCodeAccessDenied)
+			return service.ErrYanCoreVirtualKeyPolicyMissing
+		}
+		service.SetYanCoreVirtualKeyPolicyContext(c, policy)
+	}
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)
 	}

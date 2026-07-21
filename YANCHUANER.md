@@ -7,7 +7,8 @@
 ## 架构边界
 
 - `yanchuaner.cn`：账号、邮箱验证和校友身份审核的唯一来源。
-- New API：用户映射、开发者 Token、模型权限、公益额度和消费账本。
+- New API：兼容网关、用户映射、模型路由前置控制和余额投影。
+- 燕中 P0 模块：哈希虚拟 Key、公益额度不可变流水和请求级审计关联。
 - LiteLLM：上游模型路由、供应商凭据和故障切换。
 - PostgreSQL / Redis：控制面、网关和短效状态分别隔离。
 - BYOK Vault：后续独立服务；用户真实密钥不进入普通渠道表。
@@ -20,7 +21,7 @@
 docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
 ```
 
-Docker Desktop 未运行时仍可执行配置检查，但不能启动服务。完整操作步骤见 [部署说明](deploy/README.md)，设计和安全边界见 [架构文档](docs/yanchuaner/architecture.md) 与 [安全基线](docs/yanchuaner/security.md)，上线判定见 [验收矩阵](docs/yanchuaner/acceptance.md)。
+Docker Desktop 未运行时仍可执行配置检查，但不能启动服务。完整操作步骤见 [部署说明](deploy/README.md)，依赖顺序见 [依赖基线](docs/yanchuaner/dependency-baseline.md)，自主模块见 [P0 设计](docs/yanchuaner/p0-control-plane.md)，版权边界见 [来源矩阵](docs/yanchuaner/copyright-matrix.md)，上线判定见 [验收矩阵](docs/yanchuaner/acceptance.md)。
 
 ## 上游维护
 

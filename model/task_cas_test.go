@@ -38,6 +38,10 @@ func TestMain(m *testing.M) {
 		&Task{},
 		&User{},
 		&Token{},
+		&QuotaLedgerEntry{},
+		&YanCoreVirtualKeyPolicy{},
+		&YanCoreVirtualKeyPolicyRevision{},
+		&YanCoreSubjectGrant{},
 		&Log{},
 		&Channel{},
 		&QuotaData{},
@@ -64,6 +68,10 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM tasks")
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM tokens")
+		DB.Exec("DELETE FROM quota_ledger_entries")
+		DB.Exec("DELETE FROM yan_core_virtual_key_policy_revisions")
+		DB.Exec("DELETE FROM yan_core_virtual_key_policies")
+		DB.Exec("DELETE FROM yan_core_subject_grants")
 		DB.Exec("DELETE FROM logs")
 		DB.Exec("DELETE FROM channels")
 		DB.Exec("DELETE FROM quota_data")

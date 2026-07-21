@@ -25,6 +25,9 @@ import type {
   GetApiKeysResponse,
   SearchApiKeysParams,
   ApiKeyFormData,
+  ApiKeyCreationData,
+  VirtualKeyPolicy,
+  VirtualKeyPolicyUpdate,
 } from './types'
 
 // ============================================================================
@@ -63,7 +66,7 @@ export async function getApiKey(id: number): Promise<ApiResponse<ApiKey>> {
 // Create a new API key
 export async function createApiKey(
   data: ApiKeyFormData
-): Promise<ApiResponse<ApiKey>> {
+): Promise<ApiResponse<ApiKeyCreationData>> {
   const res = await api.post('/api/token/', data)
   return res.data
 }
@@ -73,6 +76,24 @@ export async function updateApiKey(
   data: ApiKeyFormData & { id: number }
 ): Promise<ApiResponse<ApiKey>> {
   const res = await api.put('/api/token/', data)
+  return res.data
+}
+
+export async function getVirtualKeyPolicy(
+  tokenId: number
+): Promise<ApiResponse<VirtualKeyPolicy>> {
+  const res = await api.get(`/api/yancore/virtual-key-policies/${tokenId}`)
+  return res.data
+}
+
+export async function updateVirtualKeyPolicy(
+  tokenId: number,
+  data: VirtualKeyPolicyUpdate
+): Promise<ApiResponse<VirtualKeyPolicy>> {
+  const res = await api.put(
+    `/api/yancore/virtual-key-policies/${tokenId}`,
+    data
+  )
   return res.data
 }
 
@@ -93,8 +114,19 @@ export async function batchDeleteApiKeys(
 // Update API key status (enable/disable)
 export async function updateApiKeyStatus(
   id: number,
-  status: number
-): Promise<ApiResponse<ApiKey>> {
+  status: number,
+  policyManaged = false
+): Promise<ApiResponse<ApiKey | VirtualKeyPolicy>> {
+  if (policyManaged) {
+    return updateVirtualKeyPolicy(id, {
+      max_rpm: 0,
+      max_tpm: 0,
+      max_concurrency: 0,
+      reason:
+        status === 1 ? 'user enabled virtual key' : 'user disabled virtual key',
+      token: { status },
+    })
+  }
   const res = await api.put('/api/token/?status_only=true', { id, status })
   return res.data
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -66,6 +67,9 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	if !allowYanCoreVirtualKeyRelayFormat(c, relayFormat) {
+		return
+	}
 
 	requestId := c.GetString(common.RequestIdKey)
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
@@ -149,6 +153,29 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	relayInfo.SetEstimatePromptTokens(tokens)
+	estimatedTPMTokens := tokens
+	if meta != nil && meta.MaxTokens > 0 {
+		if estimatedTPMTokens > math.MaxInt32-meta.MaxTokens {
+			newAPIError = types.NewErrorWithStatusCode(errors.New("estimated token count exceeds policy bounds"), types.ErrorCodeAccessDenied, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return
+		}
+		estimatedTPMTokens += meta.MaxTokens
+	}
+	if err := service.BeginYanCoreVirtualKeyRequest(c, estimatedTPMTokens); err != nil {
+		status := http.StatusTooManyRequests
+		if errors.Is(err, service.ErrYanCoreVirtualKeyLimiterUnavailable) {
+			status = http.StatusServiceUnavailable
+		} else if errors.Is(err, model.ErrYanCoreVirtualKeyPolicyInvalid) {
+			status = http.StatusForbidden
+		}
+		newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeAccessDenied, status, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		return
+	}
+	defer func() {
+		if err := service.FinalizeYanCoreVirtualKeyRequest(c); err != nil {
+			logger.LogError(c, "error finalizing virtual key rate reservation: "+err.Error())
+		}
+	}()
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {
@@ -402,6 +429,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 }
 
 func RelayMidjourney(c *gin.Context) {
+	if !allowYanCoreVirtualKeyRelayFormat(c, types.RelayFormatMjProxy) {
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 
 	if err != nil {
@@ -469,6 +499,9 @@ func RelayNotFound(c *gin.Context) {
 }
 
 func RelayTaskFetch(c *gin.Context) {
+	if !allowYanCoreVirtualKeyRelayFormat(c, types.RelayFormatTask) {
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -484,6 +517,9 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	if !allowYanCoreVirtualKeyRelayFormat(c, types.RelayFormatTask) {
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -603,6 +639,21 @@ func RelayTask(c *gin.Context) {
 	if taskErr != nil {
 		respondTaskError(c, taskErr)
 	}
+}
+
+func allowYanCoreVirtualKeyRelayFormat(c *gin.Context, relayFormat types.RelayFormat) bool {
+	err := service.CheckYanCoreVirtualKeyRelayFormat(c, relayFormat)
+	if err == nil {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": types.OpenAIError{
+			Message: err.Error(),
+			Type:    string(types.ErrorTypeNewAPIError),
+			Code:    types.ErrorCodeAccessDenied,
+		},
+	})
+	return false
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）

@@ -2,7 +2,7 @@
 
 ## 目标
 
-首版只解决一条完整链路：已在主站完成邮箱验证和身份审核的在校生、校友与教师，通过主站 OAuth 登录 New API，领取受限开发者 Token，消费公益额度，经 LiteLLM 调用获授权的 OpenAI 或 DeepSeek 官方 API。Open WebUI 使用独立 OIDC 客户端登录同一身份源，不维护第二套公开注册体系。
+首版只解决一条完整链路：已在主站完成邮箱验证和身份审核的在校生、校友与教师，通过主站 OAuth 登录 New API，领取受限开发者 Token，消费公益额度，经 LiteLLM 调用获授权的 OpenAI 或 DeepSeek 官方 API。Open WebUI 与自主燕中 AI Web 分别使用独立 OIDC 客户端登录同一身份源，不维护第二套公开注册体系。
 
 ```text
 认证成员 / Agent
@@ -23,11 +23,19 @@ LiteLLM 数据面  ----->  网关 PostgreSQL
 | 组件 | 唯一职责 | 不承担 |
 | --- | --- | --- |
 | 主站 | 登录、邮箱验证、成员身份审核、停用账号 | 模型密钥与消费账本 |
-| New API | 用户 Token、模型权限、公益额度、用户侧消费账本 | 保存真实 BYOK、供应商故障切换 |
+| New API | 兼容网关、用户映射、模型权限和余额投影 | 保存真实 BYOK、供应商故障切换 |
+| 燕中 P0 模块 | 哈希虚拟 Key、公益额度流水、请求级审计关联 | BYOK、供应商成本核对 |
+| 燕中 P1 模块 | YanCore 活动、哈希兑换码、用户权益与权益流水 | 目标人群规则、管理员 UI、BYOK |
+| YanCore Key 策略 | 哈希 Key 的供应商、速率、并发、状态与修订审计 | 上游路由、第二套余额、BYOK 密文 |
+| YanCore 主体协议 | 用户、应用、受众、scope、短期授权与应用会话 Key 策略 | 模型路由、对话存储、第三方品牌 |
 | LiteLLM | 上游凭据、路由、重试、供应商成本核对 | 面向用户的余额真值 |
 | BYOK Vault | 后续加密保存和按用户解密凭据 | 用户额度结算 |
 
-New API 是用户余额和扣费的唯一账本。LiteLLM 的费用数据只用于供应商成本核对，不得再次扣减用户余额。
+燕中 `quota_ledger_entries` 是已迁移额度路径的业务流水真值，`users.quota` 是同事务维护的 New API 兼容投影。公益额度使用 `public_benefit`，活动领取使用独立的 `campaign` funding source；YanCore 权益表和权益流水记录来源、范围、有效期和领取关系。LiteLLM 的费用数据只用于供应商成本核对，不得再次扣减用户余额。订阅和 BYOK 尚未进入该流水，预览期保持关闭。
+
+阶段 1 的 `YanCore Subject Grant` 是燕中自主定义的应用主体协议。自主 AI Web BFF 通过主体交换取得一次性、哈希存储、15 分钟有效的应用会话 Key；该 Key 复用 New API 的 `/v1` 路由、计费和用量日志，但模型白名单、会话预算与生命周期由 YanCore 策略定义。Open WebUI 与 LiteLLM 不拥有这些业务语义。契约见 [phase-1-yancore-subject-grant.md](phase-1-yancore-subject-grant.md)。
+
+阶段 2C/2D 为每个哈希 Key 增加 YanCore 策略、不可变修订和极简控制台。认证阶段加载策略，渠道选定后复核供应商，转发前通过 Redis 原子预留 RPM/TPM/并发，真实用量返回后结算 TPM。预算、有效期、模型和来源 IP 在 B 阶段仍由 Token 兼容列执行，但用户写入已收口到 YanCore 单事务并同步追加修订，旧 Token 接口不能绕行；详细边界见 [phase-2-virtual-key-policy.md](phase-2-virtual-key-policy.md)。
 
 ## 主站 OAuth 契约
 
@@ -41,7 +49,7 @@ New API 是用户余额和扣费的唯一账本。LiteLLM 的费用数据只用�
 
 主站只返回 `sub`、`preferred_username`、`name`、`email`、`email_verified` 和粗粒度 `role`。`role` 仅为 `admin`、`alumni`、`student`、`teacher` 之一；不返回毕业班级、联系方式、城市等成员资料。授权码 60 秒过期、只能消费一次并绑定 `client_id` 与精确 `redirect_uri`；访问令牌 5 分钟过期。
 
-浏览器授权端点使用主站公开地址；Docker 中的 New API 和 Open WebUI 必须通过容器可达的主站内部地址兑换令牌和读取用户信息。开发环境使用 `host.docker.internal:3000`，生产环境应统一使用受 TLS 保护的正式域名。New API 与 Open WebUI 使用不同客户端密钥，任一密钥泄露都可以单独轮换。主站 OIDC ID Token 使用持久化 RSA 私钥进行 RS256 签名，发现文档的 JWKS 只发布公钥；不得在重启时临时生成新密钥。
+浏览器授权端点使用主站公开地址；Docker 中的 New API、Open WebUI 和自主 AI Web 必须通过容器可达的主站内部地址兑换令牌和读取用户信息。开发环境使用 `host.docker.internal:3000`，生产环境应统一使用受 TLS 保护的正式域名。三类消费者使用不同 client ID 和 Secret，自主 AI Web 的 OIDC Secret 还必须与 YanCore 主体交换 Secret 分离，任一凭据泄露都可以单独轮换。主站 OIDC ID Token 使用持久化 RSA 私钥进行 RS256 签名，发现文档的 JWKS 只发布公钥；不得在重启时临时生成新密钥。
 
 New API 中配置字段映射：用户 ID `sub`、用户名 `preferred_username`、显示名 `name`、邮箱 `email`。首期 `NEW_USER_INITIAL_QUOTA=500000`，对应 `$1.00 / ¥7.00`；系统固定按 `1 USD = 7 CNY` 同时展示双币金额。Open WebUI 使用独立的有限共享 Token，不能设置无限额度，也不能在部署重启时自动补满。
 
@@ -64,4 +72,4 @@ New API 的总注册开关必须保持开启，否则首次 OAuth 登录无法�
 
 BYOK 不复用 New API 普通渠道表。Vault 只向业务层返回凭据引用，管理员界面显示供应商、尾号、创建时间和状态，不显示明文。请求时由 Broker 根据已认证用户和资金优先级在内存中解密，日志、错误、追踪和备份均不得出现密钥。
 
-首版先预留 `credential_id`、`provider`、`status` 和资金来源概念，不创建用户上传密钥入口。只有公益额度链路稳定后才实现 BYOK。
+首版先预留 `credential_id`、`provider`、`status` 和资金来源概念，不创建用户上传密钥入口。只有公益额度链路稳定后才实现 BYOK。P0 哈希虚拟 Key 与流水的独立设计见 [p0-control-plane.md](p0-control-plane.md)。

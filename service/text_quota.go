@@ -395,6 +395,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
+	if err := RecordYanCoreVirtualKeyTokens(ctx, summary.TotalTokens); err != nil {
+		logger.LogError(ctx, "error recording virtual key TPM usage: "+err.Error())
+	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())

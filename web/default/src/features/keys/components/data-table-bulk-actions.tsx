@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { Copy, Trash2, Loader2 } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
-import { type ApiKey } from '../types'
+import type { ApiKey } from '../types'
 import { ApiKeysMultiDeleteDialog } from './api-keys-multi-delete-dialog'
 import { useApiKeys } from './api-keys-provider'
 
@@ -47,6 +47,9 @@ export function DataTableBulkActions<TData>({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const selectedRows = table.getFilteredSelectedRowModel().rows
+  const hasHashedSelection = selectedRows.some(
+    (row) => (row.original as ApiKey).key_hash_enabled
+  )
 
   const handleBatchCopy = useCallback(async () => {
     if (selectedRows.length === 0) return
@@ -91,7 +94,7 @@ export function DataTableBulkActions<TData>({
                 size='icon'
                 className='size-8'
                 onClick={handleBatchCopy}
-                disabled={isCopying}
+                disabled={isCopying || hasHashedSelection}
                 aria-label={t('Copy selected keys')}
               />
             }
@@ -103,7 +106,11 @@ export function DataTableBulkActions<TData>({
             )}
           </TooltipTrigger>
           <TooltipContent>
-            <p>{t('Copy selected keys')}</p>
+            <p>
+              {hasHashedSelection
+                ? t('One-time keys cannot be copied again.')
+                : t('Copy selected keys')}
+            </p>
           </TooltipContent>
         </Tooltip>
 

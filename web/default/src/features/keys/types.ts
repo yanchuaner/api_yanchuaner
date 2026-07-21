@@ -26,6 +26,9 @@ export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
   key: z.string(),
+  key_hash_enabled: z.boolean().optional().default(false),
+  key_display_prefix: z.string().optional().default(''),
+  key_display_suffix: z.string().optional().default(''),
   status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted
   remain_quota: z.number(),
   used_quota: z.number(),
@@ -57,6 +60,49 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T
+}
+
+export interface ApiKeyCreationData {
+  key?: string
+  token?: ApiKey
+  policy?: VirtualKeyPolicy
+}
+
+export interface VirtualKeyPolicy {
+  id: number
+  token_id: number
+  user_id: number
+  provider_scope: string
+  max_rpm: number
+  max_tpm: number
+  max_concurrency: number
+  status: 'active' | 'disabled'
+  version: number
+  created_at: number
+  updated_at: number
+}
+
+export interface VirtualKeyPolicyConfig {
+  providers?: string[]
+  max_rpm: number
+  max_tpm: number
+  max_concurrency: number
+  status?: 'active' | 'disabled'
+  reason?: string
+}
+
+export interface VirtualKeyPolicyUpdate extends VirtualKeyPolicyConfig {
+  reason: string
+  token?: {
+    name?: string
+    remain_quota?: number
+    expired_time?: number
+    models?: string[]
+    allow_ips?: string
+    group?: string
+    cross_group_retry?: boolean
+    status?: number
+  }
 }
 
 export interface GetApiKeysParams {
@@ -92,6 +138,7 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   cross_group_retry: boolean
+  yancore_policy?: VirtualKeyPolicyConfig
 }
 
 // ============================================================================
