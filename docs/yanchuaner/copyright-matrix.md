@@ -69,7 +69,7 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `controller/yanchuaner_entitlement.go` | 独立活动创建、一次性兑换码发放、用户领取与权益查询接口 | 随仓库 AGPLv3-or-later |
 | `service/funding_source.go`、`service/billing_session.go` 相关 YanCore 路径 | 独立活动权益来源选择、预扣、结算、退款和兼容投影维护 | 随仓库 AGPLv3-or-later |
 | `docs/yanchuaner/**` | 燕中需求、架构、验收、迁移和来源设计 | 作者版权；仓库分发条件待运营主体/贡献政策确认 |
-| `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1`、`scripts/verify-virtual-key-policy.ps1` | 燕中部署边界、密钥生成与控制面验收流程 | 作者版权；不得包含生产秘密 |
+| `deploy/**`、`scripts/*integrated*`、`scripts/generate-deploy-env.ps1`、`scripts/verify-virtual-key-policy.ps1`、`scripts/verify-main-site-oauth-callback.ps1` | 燕中部署边界、密钥生成与控制面验收流程 | 作者版权；不得包含生产秘密 |
 
 ## 更新规则
 

@@ -72,6 +72,14 @@ cd C:\Dev\yanchuaner\api_yanchuaner
 
 `bootstrap-integrated-stack.ps1` 只预检主站 discovery、JWKS 与 Open WebUI OIDC provider 配置，不会模拟成员完成回调。主站提供方合同按 `web_yanchuaner/docs/oauth-provider.md` 执行；New API 和 Open WebUI 还需分别使用隔离测试账号完成真实登录、重复登录和角色同步验收。
 
+New API 消费端在独立数据库和 Redis 上准备完成后，可执行：
+
+```powershell
+.\scripts\verify-main-site-oauth-callback.ps1 -AllowLocalMutation
+```
+
+脚本只允许访问 localhost，并要求显式确认本地写入。它通过真实主站登录、授权码交换和 UserInfo 回调验证校友首次建号、重复登录复用、管理员角色同步，以及本地密码登录/注册关闭；不会输出授权码、Token 或密码。默认端口为主站 `3000`、隔离 New API `3201`，不得指向共享或生产数据库。
+
 集成栈入口：
 
 - 主站：`http://localhost:3000`
