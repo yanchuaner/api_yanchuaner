@@ -26,9 +26,10 @@ const (
 )
 
 var (
-	ErrYanCoreVirtualKeyPolicyInvalid       = errors.New("yancore virtual key policy is invalid")
-	ErrYanCoreVirtualKeyPolicyNotFound      = errors.New("yancore virtual key policy not found")
-	ErrYanCoreVirtualKeyPolicyModelRequired = errors.New("yancore virtual key policy requires a model allowlist")
+	ErrYanCoreVirtualKeyPolicyInvalid           = errors.New("yancore virtual key policy is invalid")
+	ErrYanCoreVirtualKeyPolicyNotFound          = errors.New("yancore virtual key policy not found")
+	ErrYanCoreVirtualKeyPolicyModelRequired     = errors.New("yancore virtual key policy requires a model allowlist")
+	ErrYanCoreVirtualKeyPolicyRolloutNotPending = errors.New("yancore virtual key policy rollout target is not pending")
 )
 
 // YanCoreVirtualKeyPolicy is an autonomous policy overlay for a hashed Token.
@@ -95,6 +96,42 @@ type YanCoreVirtualKeyTokenUpdate struct {
 	Group           *string   `json:"group,omitempty"`
 	CrossGroupRetry *bool     `json:"cross_group_retry,omitempty"`
 	Status          *int      `json:"status,omitempty"`
+}
+
+const (
+	YanCoreVirtualKeyPolicyRolloutReady  = "ready_to_activate"
+	YanCoreVirtualKeyPolicyRolloutReview = "requires_review"
+)
+
+// YanCoreVirtualKeyPolicyRolloutItem is an administrator-facing preflight
+// record. It intentionally excludes all key material and display fragments.
+type YanCoreVirtualKeyPolicyRolloutItem struct {
+	TokenID        int    `json:"token_id"`
+	UserID         int    `json:"user_id"`
+	ModelScope     string `json:"model_scope"`
+	Classification string `json:"classification"`
+	Reason         string `json:"reason"`
+}
+
+// YanCoreVirtualKeyPolicyRolloutReport is a point-in-time view of legacy
+// hashed keys that have not yet received a YanCore policy.
+type YanCoreVirtualKeyPolicyRolloutReport struct {
+	GeneratedAt     int64                                `json:"generated_at"`
+	TotalHashedKeys int                                  `json:"total_hashed_keys"`
+	ManagedActive   int                                  `json:"managed_active"`
+	ManagedDisabled int                                  `json:"managed_disabled"`
+	PendingReady    int                                  `json:"pending_ready"`
+	PendingReview   int                                  `json:"pending_review"`
+	Items           []YanCoreVirtualKeyPolicyRolloutItem `json:"items"`
+}
+
+// YanCoreVirtualKeyPolicyRolloutResult is the auditable outcome of one
+// explicit administrator-approved rollout batch.
+type YanCoreVirtualKeyPolicyRolloutResult struct {
+	Applied   int                                  `json:"applied"`
+	Activated int                                  `json:"activated"`
+	Disabled  int                                  `json:"disabled"`
+	Items     []YanCoreVirtualKeyPolicyRolloutItem `json:"items"`
 }
 
 func YanCoreVirtualKeyPolicyEnabled() bool {
@@ -576,6 +613,167 @@ func policyTokenStatus(status string) int {
 	return common.TokenStatusEnabled
 }
 
+func planYanCoreVirtualKeyPolicyRollout(token *Token) (*YanCoreVirtualKeyPolicy, YanCoreVirtualKeyPolicyRolloutItem) {
+	item := YanCoreVirtualKeyPolicyRolloutItem{TokenID: token.Id, UserID: token.UserId, ModelScope: strings.TrimSpace(token.ModelLimits)}
+	if token.Status != common.TokenStatusEnabled {
+		item.Classification = YanCoreVirtualKeyPolicyRolloutReview
+		item.Reason = "token_status_not_enabled"
+		return nil, item
+	}
+	if token.UnlimitedQuota || token.RemainQuota <= 0 {
+		item.Classification = YanCoreVirtualKeyPolicyRolloutReview
+		item.Reason = "finite_positive_budget_required"
+		return nil, item
+	}
+	if token.ExpiredTime > 0 && token.ExpiredTime <= time.Now().Unix() {
+		item.Classification = YanCoreVirtualKeyPolicyRolloutReview
+		item.Reason = "token_expired"
+		return nil, item
+	}
+	tokenCopy := *token
+	policy, err := BuildYanCoreVirtualKeyPolicy(&tokenCopy, nil)
+	if err != nil {
+		item.Classification = YanCoreVirtualKeyPolicyRolloutReview
+		item.Reason = "model_or_source_scope_ambiguous"
+		return nil, item
+	}
+	item.Classification = YanCoreVirtualKeyPolicyRolloutReady
+	item.Reason = "model_and_source_scope_valid"
+	item.ModelScope = tokenCopy.ModelLimits
+	return policy, item
+}
+
+// GetYanCoreVirtualKeyPolicyRolloutReport supports a review before the
+// feature flag is enabled. It never loads or returns virtual-key material.
+func GetYanCoreVirtualKeyPolicyRolloutReport(limit int) (*YanCoreVirtualKeyPolicyRolloutReport, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	var tokens []Token
+	if err := DB.Select("id", "user_id", "key_hash_enabled", "status", "expired_time", "remain_quota", "unlimited_quota", "model_limits_enabled", "model_limits", "allow_ips").Where("key_hash_enabled = ?", true).Order("id").Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+	tokenIDs := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		tokenIDs = append(tokenIDs, token.Id)
+	}
+	policies := make(map[int]YanCoreVirtualKeyPolicy, len(tokenIDs))
+	if len(tokenIDs) > 0 {
+		var stored []YanCoreVirtualKeyPolicy
+		if err := DB.Select("token_id", "status").Where("token_id IN ?", tokenIDs).Find(&stored).Error; err != nil {
+			return nil, err
+		}
+		for _, policy := range stored {
+			policies[policy.TokenId] = policy
+		}
+	}
+	report := &YanCoreVirtualKeyPolicyRolloutReport{GeneratedAt: time.Now().Unix(), TotalHashedKeys: len(tokens), Items: make([]YanCoreVirtualKeyPolicyRolloutItem, 0)}
+	for i := range tokens {
+		token := &tokens[i]
+		if policy, exists := policies[token.Id]; exists {
+			if policy.Status == YanCoreVirtualKeyPolicyActive {
+				report.ManagedActive++
+			} else {
+				report.ManagedDisabled++
+			}
+			continue
+		}
+		_, item := planYanCoreVirtualKeyPolicyRollout(token)
+		if item.Classification == YanCoreVirtualKeyPolicyRolloutReady {
+			report.PendingReady++
+		} else {
+			report.PendingReview++
+		}
+		if len(report.Items) < limit {
+			report.Items = append(report.Items, item)
+		}
+	}
+	return report, nil
+}
+
+func normalizeYanCoreVirtualKeyPolicyRolloutTokenIDs(tokenIDs []int) ([]int, error) {
+	if len(tokenIDs) == 0 || len(tokenIDs) > 100 {
+		return nil, ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	seen := make(map[int]struct{}, len(tokenIDs))
+	result := make([]int, 0, len(tokenIDs))
+	for _, tokenID := range tokenIDs {
+		if tokenID <= 0 {
+			return nil, ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		if _, exists := seen[tokenID]; exists {
+			return nil, ErrYanCoreVirtualKeyPolicyInvalid
+		}
+		seen[tokenID] = struct{}{}
+		result = append(result, tokenID)
+	}
+	sort.Ints(result)
+	return result, nil
+}
+
+// ApplyYanCoreVirtualKeyPolicyRollout creates policies only for the explicit
+// reviewed token IDs. Uncertain keys are frozen instead of being activated.
+func ApplyYanCoreVirtualKeyPolicyRollout(tokenIDs []int, actorUserID int, reason string) (*YanCoreVirtualKeyPolicyRolloutResult, error) {
+	normalizedIDs, err := normalizeYanCoreVirtualKeyPolicyRolloutTokenIDs(tokenIDs)
+	if err != nil || actorUserID <= 0 {
+		return nil, ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	reason = strings.TrimSpace(reason)
+	if len(reason) < 3 || len(reason) > 160 {
+		return nil, ErrYanCoreVirtualKeyPolicyInvalid
+	}
+	result := &YanCoreVirtualKeyPolicyRolloutResult{Items: make([]YanCoreVirtualKeyPolicyRolloutItem, 0, len(normalizedIDs))}
+	affectedUsers := make(map[int]struct{})
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		for _, tokenID := range normalizedIDs {
+			var token Token
+			if err := lockForUpdate(tx).Select("id", "user_id", "key_hash_enabled", "status", "expired_time", "remain_quota", "unlimited_quota", "model_limits_enabled", "model_limits", "allow_ips").Where("id = ? AND key_hash_enabled = ?", tokenID, true).First(&token).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrYanCoreVirtualKeyPolicyRolloutNotPending
+				}
+				return err
+			}
+			var existing YanCoreVirtualKeyPolicy
+			err := lockForUpdate(tx).Select("id").Where("token_id = ?", token.Id).First(&existing).Error
+			if err == nil {
+				return ErrYanCoreVirtualKeyPolicyRolloutNotPending
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			policy, item := planYanCoreVirtualKeyPolicyRollout(&token)
+			if item.Classification == YanCoreVirtualKeyPolicyRolloutReady {
+				result.Activated++
+			} else {
+				policy = &YanCoreVirtualKeyPolicy{TokenId: token.Id, UserId: token.UserId, ProviderScope: "*", MaxRPM: common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_RPM", YanCoreVirtualKeyPolicyDefaultRPM), MaxTPM: common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_TPM", YanCoreVirtualKeyPolicyDefaultTPM), MaxConcurrency: common.GetEnvOrDefault("YANCHUANER_VIRTUAL_KEY_DEFAULT_CONCURRENCY", YanCoreVirtualKeyPolicyDefaultConcurrency), Status: YanCoreVirtualKeyPolicyDisabled, Version: 1}
+				if token.Status == common.TokenStatusEnabled {
+					token.Status = common.TokenStatusDisabled
+					if err := tx.Model(&Token{}).Where("id = ? AND user_id = ?", token.Id, token.UserId).Update("status", token.Status).Error; err != nil {
+						return err
+					}
+				}
+				result.Disabled++
+			}
+			if err := createYanCoreVirtualKeyPolicyWithTx(tx, &token, policy, actorUserID, "admin rollout: "+item.Reason+"; "+reason); err != nil {
+				return err
+			}
+			result.Applied++
+			result.Items = append(result.Items, item)
+			affectedUsers[token.UserId] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for userID := range affectedUsers {
+		if cacheErr := InvalidateUserTokensCache(userID); cacheErr != nil {
+			common.SysLog("failed to invalidate virtual key cache after policy rollout: " + cacheErr.Error())
+		}
+	}
+	return result, nil
+}
+
 func ListYanCoreVirtualKeyPolicyRevisions(tokenID, userID int) ([]*YanCoreVirtualKeyPolicyRevision, error) {
 	if tokenID <= 0 || userID <= 0 {
 		return nil, ErrYanCoreVirtualKeyPolicyNotFound
@@ -585,8 +783,9 @@ func ListYanCoreVirtualKeyPolicyRevisions(tokenID, userID int) ([]*YanCoreVirtua
 	return revisions, err
 }
 
-// BackfillYanCoreVirtualKeyPolicies creates a disabled policy for ambiguous
-// legacy hashed keys instead of silently granting an unrestricted policy.
+// BackfillYanCoreVirtualKeyPolicies is retained for controlled compatibility
+// tests. Startup migration must use the administrator preflight and rollout
+// APIs instead of calling this helper.
 func BackfillYanCoreVirtualKeyPolicies() error {
 	if !YanCoreVirtualKeyPolicyEnabled() {
 		return nil

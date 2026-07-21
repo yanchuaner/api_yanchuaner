@@ -271,6 +271,12 @@ func SetApiRouter(router *gin.Engine) {
 				yanCoreVirtualKeyPolicyRoute.PUT("/:token_id", middleware.CriticalRateLimit(), controller.UpdateYanCoreVirtualKeyPolicy)
 				yanCoreVirtualKeyPolicyRoute.GET("/:token_id/revisions", controller.ListYanCoreVirtualKeyPolicyRevisions)
 			}
+			yanCoreVirtualKeyPolicyRolloutRoute := yanCoreRoute.Group("/virtual-key-policies/rollout")
+			yanCoreVirtualKeyPolicyRolloutRoute.Use(middleware.AdminAuth())
+			{
+				yanCoreVirtualKeyPolicyRolloutRoute.GET("/", controller.GetYanCoreVirtualKeyPolicyRolloutReport)
+				yanCoreVirtualKeyPolicyRolloutRoute.POST("/", middleware.CriticalRateLimit(), controller.ApplyYanCoreVirtualKeyPolicyRollout)
+			}
 			yanCoreCampaignRoute := yanCoreRoute.Group("/campaigns")
 			yanCoreCampaignRoute.Use(middleware.AdminAuth())
 			{

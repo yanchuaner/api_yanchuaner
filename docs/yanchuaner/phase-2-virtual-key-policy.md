@@ -1,4 +1,4 @@
-# 阶段 2C/2D：YanCore 虚拟 Key 策略与控制台
+# 阶段 2C/2D/2E：YanCore 虚拟 Key 策略、控制台与安全回填
 
 更新日期：2026-07-21
 状态：`IMPLEMENTED_LOCAL_ACCEPTANCE_PENDING`
@@ -25,6 +25,8 @@
 - `GET /api/yancore/virtual-key-policies/:token_id`：读取本人 Key 的当前策略。
 - `PUT /api/yancore/virtual-key-policies/:token_id`：在一个数据库事务中更新供应商、RPM、TPM、并发、状态，以及 Token 兼容投影中的名称、模型、来源 IP、有限预算、有效期与分组；`reason` 必填。
 - `GET /api/yancore/virtual-key-policies/:token_id/revisions`：按版本倒序读取最近 100 条修订。
+- `GET /api/yancore/virtual-key-policies/rollout/`：仅管理员读取历史哈希 Key 的脱敏预检报告。报告不含原始或展示 Key，只列出 Token ID、用户 ID、模型范围、分类和原因。
+- `POST /api/yancore/virtual-key-policies/rollout/`：仅管理员以最多 100 个明确 `token_ids` 和 3 至 160 字符的 `reason` 执行一次回填批次。安全可推导项创建活动策略；其余项创建禁用策略，并冻结仍启用的不安全旧 Key。每项均追加不可变修订，管理员操作写入管理审计。
 
 活动供应商集合只能由 `openai`、`deepseek` 组成，并且必须覆盖 Token 模型白名单推导出的供应商。`*` 只用于无法安全识别的历史 Key 禁用占位，不能启用。
 
@@ -45,16 +47,16 @@ Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 
 
 ## 迁移与启用
 
-1. 保持 `YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED=false` 启动新版本，完成表迁移。
-2. 盘点所有 `key_hash_enabled=true` 的 Token，确认模型白名单只含首期模型；先轮换仍为明文的旧 Key。
-3. 在隔离数据库开启开关执行回填。可推导供应商的 Key 创建活动策略；空白、通配或未知模型的 Key 创建为禁用策略并留下原因。
-4. 审查禁用清单，逐个修正模型范围和策略，不批量扩大权限。
+1. 保持 `YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED=false` 启动新版本，完成表迁移。启动过程不会自动写入历史回填。
+2. 轮换仍为明文的旧 Key；随后由管理员调用 `GET /api/yancore/virtual-key-policies/rollout/` 盘点哈希 Key，确认模型白名单、有限预算、有效期和来源范围。
+3. 审查预检结果，以小批量明确 Token ID 调用 `POST /api/yancore/virtual-key-policies/rollout/`。空白、通配、未知模型、无有限预算、过期或非启用 Key 只能生成禁用策略，不能批量扩大权限。
+4. 查询管理审计和策略修订；逐个修正禁用项的模型/预算/状态，再通过 YanCore 原子接口启用。
 5. 验证 Redis、403/429/503、预算扣减、失败退款和修订查询后，再对本地集成栈开启开关。
 6. 使用本地 root 访问令牌运行 `scripts/verify-virtual-key-policy.ps1`；脚本必须验证版本从 1 增至 2、修订恰为两条且旧 Token 更新返回 409。
 
 ## 验证证据
 
-- SQLite：策略创建/更新事务、版本与修订、供应商推导、回填禁用、AI Web 会话策略、RPM/TPM/并发及 Redis 失效路径。
+- SQLite：策略创建/更新事务、版本与修订、供应商推导、显式回填预检/活动或禁用结果、AI Web 会话策略、RPM/TPM/并发及 Redis 失效路径。
 - PostgreSQL 16.14 与 MySQL 8.0：建表、Token/策略同事务创建、行锁更新和两条不可变修订。
 - Redis 7：Lua 原子并发拒绝、TPM 实际结算和请求中途客户端失效时 fail-closed。
 - 全量 Go 测试、仅编译检查、Compose 解析和 Docker 构建作为合并门禁。
@@ -68,4 +70,4 @@ Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 
 - RPM/TPM/并发目前只开放标准同步文本 Relay；异步和媒体协议已明确拒绝，尚未实现持久化限流预留。
 - 模型、来源 IP、预算和有效期仍存放在 New API Token 兼容列，但已只能通过 YanCore 事务更新并追加修订；阶段 C 仍需把存储真值迁出 Token。
 - 固定分钟窗口适合预览期，不能代替长期的分布式配额、成本告警和异常用量风控。
-- 极简用户端已接入创建、查看、编辑和启停；管理员批量策略操作仍在下一运营 UI slice 实现。
+- 极简用户端已接入创建、查看、编辑和启停；管理员已具备 API 级预检与小批量回填能力，运营 UI 仍在下一 slice 实现。

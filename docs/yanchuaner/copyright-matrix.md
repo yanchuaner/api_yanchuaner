@@ -62,8 +62,8 @@ New API 上游基线固定为 `v1.0.0-rc.21`（`bde9b2f44887d34ec54799ae191d50f9
 | `model/yanchuaner_subject_grant.go`、`controller/yanchuaner_subject_grant.go` 及测试 | 独立主体、应用、受众、scope、短期签名、撤销和防跨应用重放协议 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_subject_exchange.go` 及测试 | 独立主站令牌复验、服务客户端鉴权、可信 OAuth 绑定与固定 AI Web 策略 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_ai_session_key.go` 及测试 | 独立应用会话 Key 生命周期、并发会话指针、模型/预算边界、哈希存储与轮换策略 | 随仓库 AGPLv3-or-later |
-| `model/yanchuaner_virtual_key_policy.go` 及测试 | 独立 Key 策略、供应商推导、版本修订、历史回填和跨数据库事务设计 | 随仓库 AGPLv3-or-later |
-| `controller/yanchuaner_virtual_key_policy.go` | 独立的本人策略读取、带原因更新和修订查询接口 | 随仓库 AGPLv3-or-later |
+| `model/yanchuaner_virtual_key_policy.go` 及测试 | 独立 Key 策略、供应商推导、版本修订、历史 Key 脱敏预检、显式安全回填和跨数据库事务设计 | 随仓库 AGPLv3-or-later |
+| `controller/yanchuaner_virtual_key_policy.go` | 独立的本人策略读取、带原因更新和修订查询，以及管理员预检/小批量回填接口 | 随仓库 AGPLv3-or-later |
 | `service/yanchuaner_virtual_key_policy.go`、`service/yanchuaner_virtual_key_limiter.go` 及测试 | 独立供应商复核、Redis/内存 RPM/TPM/并发预留结算和 fail-closed 语义 | 随仓库 AGPLv3-or-later |
 | `model/yanchuaner_entitlement.go` 及测试 | 独立活动、哈希兑换码、用户权益、领取幂等、来源分账和权益流水 | 随仓库 AGPLv3-or-later |
 | `controller/yanchuaner_entitlement.go` | 独立活动创建、一次性兑换码发放、用户领取与权益查询接口 | 随仓库 AGPLv3-or-later |

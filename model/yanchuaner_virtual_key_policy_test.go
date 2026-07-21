@@ -179,6 +179,62 @@ func TestBackfillYanCoreVirtualKeyPoliciesDisablesAmbiguousLegacyKey(t *testing.
 	assert.Equal(t, "*", policy.ProviderScope)
 }
 
+func TestYanCoreVirtualKeyPolicyRolloutRequiresExplicitReviewedTargets(t *testing.T) {
+	truncateTables(t)
+	user := &User{Username: "policy-rollout-user", Password: "password", Status: common.UserStatusEnabled, Role: common.RoleAdminUser}
+	require.NoError(t, DB.Create(user).Error)
+	ready := &Token{UserId: user.Id, Name: "ready-key", Key: "sha256:ready-key", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "gpt-4.1-mini"}
+	unsafe := &Token{UserId: user.Id, Name: "unsafe-key", Key: "sha256:unsafe-key", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "third-party-model"}
+	managed := &Token{UserId: user.Id, Name: "managed-key", Key: "sha256:managed-key", KeyHashEnabled: true, Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ModelLimitsEnabled: true, ModelLimits: "deepseek-chat"}
+	require.NoError(t, DB.Create(ready).Error)
+	require.NoError(t, DB.Create(unsafe).Error)
+	managedPolicy, err := BuildYanCoreVirtualKeyPolicy(managed, nil)
+	require.NoError(t, err)
+	require.NoError(t, CreateYanCoreVirtualKeyWithPolicy(managed, managedPolicy, user.Id, "existing managed policy"))
+
+	report, err := GetYanCoreVirtualKeyPolicyRolloutReport(10)
+	require.NoError(t, err)
+	assert.Equal(t, 3, report.TotalHashedKeys)
+	assert.Equal(t, 1, report.ManagedActive)
+	assert.Equal(t, 1, report.PendingReady)
+	assert.Equal(t, 1, report.PendingReview)
+	require.Len(t, report.Items, 2)
+	for _, item := range report.Items {
+		assert.NotContains(t, item.ModelScope, "sha256:")
+	}
+	_, err = ApplyYanCoreVirtualKeyPolicyRollout([]int{managed.Id, ready.Id}, user.Id, "stale reviewed rollout")
+	require.ErrorIs(t, err, ErrYanCoreVirtualKeyPolicyRolloutNotPending)
+	pendingReady, err := GetYanCoreVirtualKeyPolicy(ready.Id, user.Id)
+	require.NoError(t, err)
+	assert.Nil(t, pendingReady)
+
+	result, err := ApplyYanCoreVirtualKeyPolicyRollout([]int{unsafe.Id, ready.Id}, user.Id, "reviewed before local rollout")
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Applied)
+	assert.Equal(t, 1, result.Activated)
+	assert.Equal(t, 1, result.Disabled)
+
+	readyPolicy, err := GetYanCoreVirtualKeyPolicy(ready.Id, user.Id)
+	require.NoError(t, err)
+	require.NotNil(t, readyPolicy)
+	assert.Equal(t, YanCoreVirtualKeyPolicyActive, readyPolicy.Status)
+	unsafePolicy, err := GetYanCoreVirtualKeyPolicy(unsafe.Id, user.Id)
+	require.NoError(t, err)
+	require.NotNil(t, unsafePolicy)
+	assert.Equal(t, YanCoreVirtualKeyPolicyDisabled, unsafePolicy.Status)
+	var storedUnsafe Token
+	require.NoError(t, DB.First(&storedUnsafe, unsafe.Id).Error)
+	assert.Equal(t, common.TokenStatusDisabled, storedUnsafe.Status)
+	unsafeRevisions, err := ListYanCoreVirtualKeyPolicyRevisions(unsafe.Id, user.Id)
+	require.NoError(t, err)
+	require.Len(t, unsafeRevisions, 1)
+	assert.Contains(t, unsafeRevisions[0].Reason, "model_or_source_scope_ambiguous")
+	assert.Contains(t, unsafeRevisions[0].Reason, "reviewed before local rollout")
+
+	_, err = ApplyYanCoreVirtualKeyPolicyRollout([]int{ready.Id}, user.Id, "repeat reviewed rollout")
+	require.ErrorIs(t, err, ErrYanCoreVirtualKeyPolicyRolloutNotPending)
+}
+
 func TestYanCoreVirtualKeyPolicyPostgresMigrationCompatibility(t *testing.T) {
 	dsn := os.Getenv("TEST_POSTGRES_DSN")
 	if dsn == "" {
