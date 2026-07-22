@@ -31,6 +31,11 @@ func TestValidYanCoreMainSiteIdentityRequiresVerifiedSupportedRole(t *testing.T)
 	assert.True(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: true, Role: "student"}))
 	assert.False(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: false, Role: "student"}))
 	assert.False(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: true, Role: "guest"}))
+	active := true
+	inactive := false
+	assert.True(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: true, Role: "alumni", Active: &active, Status: "enabled"}))
+	assert.False(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: true, Role: "alumni", Active: &inactive}))
+	assert.False(t, validYanCoreMainSiteIdentity(&yanCoreMainSiteIdentity{Subject: "member-1", EmailVerified: true, Role: "alumni", Status: "disabled"}))
 }
 
 func TestFetchYanCoreMainSiteIdentityStopsRedirectAndBoundsResponse(t *testing.T) {

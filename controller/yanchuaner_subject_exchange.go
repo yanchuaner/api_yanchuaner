@@ -45,6 +45,8 @@ type yanCoreMainSiteIdentity struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 	Role          string `json:"role"`
+	Active        *bool  `json:"active,omitempty"`
+	Status        string `json:"status,omitempty"`
 }
 
 func subjectGrantExchangeEnabled() bool {
@@ -91,6 +93,13 @@ func authorizeYanCoreExchangeClient(value string) bool {
 
 func validYanCoreMainSiteIdentity(identity *yanCoreMainSiteIdentity) bool {
 	if identity == nil || strings.TrimSpace(identity.Subject) == "" || !identity.EmailVerified {
+		return false
+	}
+	if identity.Active != nil && !*identity.Active {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(identity.Status)) {
+	case "disabled", "suspended", "deleted", "inactive":
 		return false
 	}
 	switch strings.TrimSpace(identity.Role) {
