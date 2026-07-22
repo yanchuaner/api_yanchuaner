@@ -134,8 +134,13 @@ func (w *WalletFunding) Refund() error {
 	if w.consumed <= 0 {
 		return nil
 	}
-	// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。
-	// 订阅的 RefundSubscriptionPreConsume 有 requestId 幂等保护所以可以重试。
+	// 账本路径使用 request + phase 幂等键，可以安全重试；兼容旧余额路径
+	// 仍保持单次执行，避免对非幂等的 quota += N 重复退款。
+	if model.QuotaLedgerEnabled() || yanCoreCampaignFundingEnabled() {
+		return refundWithRetry(func() error {
+			return w.applyChange(w.consumed, model.QuotaLedgerTypeRefund, "refund", "failed model request refund")
+		})
+	}
 	return w.applyChange(w.consumed, model.QuotaLedgerTypeRefund, "refund", "failed model request refund")
 }
 

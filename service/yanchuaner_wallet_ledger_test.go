@@ -26,6 +26,9 @@ func TestWalletFundingWritesReserveSettlementAndRefundLedger(t *testing.T) {
 	refunded := &WalletFunding{userId: 1001, tokenId: 2001, requestId: "ledger-refund"}
 	require.NoError(t, refunded.PreConsume(25))
 	require.NoError(t, refunded.Refund())
+	// A retry must resolve through the same idempotency key and must not
+	// append another refund or increase the balance a second time.
+	require.NoError(t, refunded.Refund())
 
 	var user model.User
 	require.NoError(t, model.DB.First(&user, 1001).Error)
@@ -43,4 +46,6 @@ func TestWalletFundingWritesReserveSettlementAndRefundLedger(t *testing.T) {
 	assert.Equal(t, model.QuotaLedgerTypeReserve, entries[0].EntryType)
 	assert.Equal(t, model.QuotaLedgerTypeSettlement, entries[1].EntryType)
 	assert.Equal(t, model.QuotaLedgerTypeRefund, entries[3].EntryType)
+	assert.Equal(t, "ledger-refund", entries[2].RequestId)
+	assert.Equal(t, "ledger-refund", entries[3].RequestId)
 }
