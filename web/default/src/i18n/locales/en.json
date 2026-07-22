@@ -4505,6 +4505,7 @@
     "This channel type does not support fetching models": "This channel type does not support fetching models",
     "This channel type requires additional configuration": "This channel type requires additional configuration",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.",
+    "This entitlement has already been claimed": "This entitlement has already been claimed",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.",
     "This data may be unreliable, use with caution": "This data may be unreliable, use with caution",
     "This device does not support Passkey": "This device does not support Passkey",

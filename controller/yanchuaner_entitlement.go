@@ -8,12 +8,14 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,6 +35,8 @@ type createYanCoreRedeemCodesRequest struct {
 	Count     int `json:"count" binding:"required,gt=0,max=100"`
 	MaxClaims int `json:"max_claims" binding:"required,gt=0"`
 }
+
+var claimYanCoreRedeemCode = model.ClaimYanCoreRedeemCode
 
 func yancoreEntitlementError(c *gin.Context, err error) {
 	status := http.StatusBadRequest
@@ -99,9 +103,10 @@ func ClaimYanCoreEntitlement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "code is required"})
 		return
 	}
-	entitlement, replayed, err := model.ClaimYanCoreRedeemCode(c.GetInt("id"), request.Code)
+	entitlement, replayed, err := claimYanCoreRedeemCode(c.GetInt("id"), request.Code)
 	if err != nil {
-		yancoreEntitlementError(c, err)
+		logger.LogError(c, fmt.Sprintf("failed to claim YanCore entitlement for user %d: %s", c.GetInt("id"), err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "entitlement claim failed"})
 		return
 	}
 	common.ApiSuccess(c, gin.H{"entitlement": entitlement, "replayed": replayed})

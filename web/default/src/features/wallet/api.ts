@@ -63,11 +63,25 @@ export async function getTopupInfo(): Promise<TopupInfoResponse> {
 /**
  * Redeem a topup code
  */
-export async function redeemTopupCode(
+export async function claimEntitlementCode(
   request: RedemptionRequest
 ): Promise<RedemptionResponse> {
-  const res = await api.post('/api/user/topup', request)
-  return res.data
+  const res = await api.post('/api/yancore/entitlements/claim', {
+    code: request.key,
+  })
+  const response = res.data as ApiResponse<{
+    entitlement?: { granted_quota?: number }
+    replayed?: boolean
+  }>
+  const grantedQuota = response.data?.entitlement?.granted_quota
+  if (!isApiSuccess(response) || typeof grantedQuota !== 'number') {
+    return { success: false, message: response.message }
+  }
+  return {
+    success: true,
+    message: response.message,
+    data: { grantedQuota, replayed: response.data?.replayed === true },
+  }
 }
 
 /**
