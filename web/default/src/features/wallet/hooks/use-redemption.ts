@@ -23,7 +23,7 @@ import { toast } from 'sonner'
 import { getSelf } from '@/lib/api'
 import { formatQuota } from '@/lib/format'
 
-import { redeemTopupCode } from '../api'
+import { claimEntitlementCode } from '../api'
 
 // ============================================================================
 // Redemption Hook
@@ -40,22 +40,25 @@ export function useRedemption() {
 
     try {
       setRedeeming(true)
-      const response = await redeemTopupCode({ key: code })
+      const response = await claimEntitlementCode({ key: code.trim() })
 
       if (response.success && response.data) {
-        const quotaAdded = response.data
-        toast.success(
-          i18next.t('Redemption successful! Added: {{quota}}', {
-            quota: formatQuota(quotaAdded),
-          })
-        )
+        if (response.data.replayed) {
+          toast.success(i18next.t('This entitlement has already been claimed'))
+        } else {
+          toast.success(
+            i18next.t('Redemption successful! Added: {{quota}}', {
+              quota: formatQuota(response.data.grantedQuota),
+            })
+          )
+        }
         await getSelf()
         return true
       }
 
       toast.error(response.message || i18next.t('Redemption failed'))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Redemption failed'))
       return false
     } finally {

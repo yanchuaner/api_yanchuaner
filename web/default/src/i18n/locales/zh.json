@@ -4505,6 +4505,7 @@
     "This channel type does not support fetching models": "此渠道类型不支持获取模型",
     "This channel type requires additional configuration": "此渠道类型需要填写额外配置",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "此确认会解锁支付、兑换码、订阅套餐和邀请奖励功能。请仔细阅读相关声明。",
+    "This entitlement has already been claimed": "该权益已经领取",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "此处仅控制模型请求速率限制。Web/API 路由限流由环境变量配置，仍可能返回 429。",
     "This data may be unreliable, use with caution": "此数据可能不可靠，请谨慎使用",
     "This device does not support Passkey": "此设备不支持 Passkey",
