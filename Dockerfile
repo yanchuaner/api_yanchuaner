@@ -4,7 +4,11 @@ WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
 COPY web/classic/package.json ./classic/package.json
-RUN bun install --frozen-lockfile
+ARG BUN_CONFIG_REGISTRY=https://registry.npmjs.org
+ARG BUN_NETWORK_CONCURRENCY=4
+RUN bun install --frozen-lockfile --no-cache \
+    --network-concurrency "${BUN_NETWORK_CONCURRENCY}" \
+    --registry "${BUN_CONFIG_REGISTRY}"
 COPY ./web/default ./default
 COPY ./VERSION /build/VERSION
 RUN cd default && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
@@ -15,7 +19,11 @@ WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
 COPY web/classic/package.json ./classic/package.json
-RUN bun install --filter ./classic --frozen-lockfile
+ARG BUN_CONFIG_REGISTRY=https://registry.npmjs.org
+ARG BUN_NETWORK_CONCURRENCY=4
+RUN bun install --filter ./classic --frozen-lockfile --no-cache \
+    --network-concurrency "${BUN_NETWORK_CONCURRENCY}" \
+    --registry "${BUN_CONFIG_REGISTRY}"
 COPY ./web/classic ./classic
 COPY ./VERSION /build/VERSION
 RUN cd classic && VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
