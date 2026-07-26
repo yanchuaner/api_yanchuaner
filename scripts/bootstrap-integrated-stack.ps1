@@ -259,6 +259,20 @@ if (-not $channelTest.success) { throw "New API channel test failed: $($channelT
 
 $tokens = Invoke-NewApiJson "GET" "/api/token/?p=1&page_size=100" $null $session
 $serviceToken = @($tokens.data.items) | Where-Object { $_.name -eq "open-webui-service" } | Select-Object -First 1
+$openWebUiKey = $aiEnv["OPENWEBUI_API_KEY"]
+$serviceKeyValid = $false
+if ($serviceToken -and -not [string]::IsNullOrWhiteSpace($openWebUiKey)) {
+  try {
+    Invoke-RestMethod -Uri "http://127.0.0.1:3101/v1/models" `
+      -Headers @{ Authorization = "Bearer $openWebUiKey" } -TimeoutSec 10 | Out-Null
+    $serviceKeyValid = $true
+  } catch {}
+}
+if ($serviceToken -and -not $serviceKeyValid) {
+  $deleteResult = Invoke-NewApiJson "DELETE" "/api/token/$($serviceToken.id)" $null $session
+  if (-not $deleteResult.success) { throw "Failed to rotate stale Open WebUI service token: $($deleteResult.message)" }
+  $serviceToken = $null
+}
 if (-not $serviceToken) {
   $tokenResult = Invoke-NewApiJson "POST" "/api/token/" @{
     name = "open-webui-service"
@@ -270,8 +284,10 @@ if (-not $serviceToken) {
     group = "default"
   } $session
   if (-not $tokenResult.success) { throw "Failed to create Open WebUI service token: $($tokenResult.message)" }
-  $tokens = Invoke-NewApiJson "GET" "/api/token/?p=1&page_size=100" $null $session
-  $serviceToken = @($tokens.data.items) | Where-Object { $_.name -eq "open-webui-service" } | Select-Object -First 1
+  $openWebUiKey = [string]$tokenResult.data.key
+  if ([string]::IsNullOrWhiteSpace($openWebUiKey)) {
+    throw "New API did not return the one-time Open WebUI service key"
+  }
 } elseif ($serviceToken.unlimited_quota) {
   $tokenResult = Invoke-NewApiJson "PUT" "/api/token/" @{
     id = $serviceToken.id
@@ -287,8 +303,6 @@ if (-not $serviceToken) {
   } $session
   if (-not $tokenResult.success) { throw "Failed to cap the Open WebUI service token: $($tokenResult.message)" }
 }
-$tokenKey = Invoke-NewApiJson "POST" "/api/token/$($serviceToken.id)/key" @{} $session
-$openWebUiKey = "sk-$($tokenKey.data.key)"
 Set-DotEnvValues $aiEnvPath @{
   OPENWEBUI_API_KEY = $openWebUiKey
   OPENWEBUI_IMAGE_API_KEY = $openWebUiKey
