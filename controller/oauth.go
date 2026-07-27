@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -202,6 +203,80 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 	})
 }
 
+func adoptTrustedRootOAuthUser(provider oauth.Provider, oauthUser *oauth.OAuthUser, desiredRole int, managesRole bool) (*model.User, bool, error) {
+	genericProvider, ok := provider.(*oauth.GenericOAuthProvider)
+	if !ok || genericProvider.GetConfig().Slug != "yanchuaner" || !managesRole || desiredRole != common.RoleRootUser {
+		return nil, false, nil
+	}
+
+	var root model.User
+	adopted := false
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var roots []model.User
+		if err := tx.Where("role = ? AND status = ?", common.RoleRootUser, common.UserStatusEnabled).Limit(2).Find(&roots).Error; err != nil {
+			return err
+		}
+		if len(roots) != 1 {
+			return nil
+		}
+		root = roots[0]
+
+		var bindingCount int64
+		if err := tx.Model(&model.UserOAuthBinding{}).
+			Where("provider_id = ? AND (user_id = ? OR provider_user_id = ?)", genericProvider.GetProviderId(), root.Id, oauthUser.ProviderUserID).
+			Count(&bindingCount).Error; err != nil {
+			return err
+		}
+		if bindingCount != 0 {
+			return nil
+		}
+
+		email := model.NormalizeEmail(oauthUser.Email)
+		if root.Email != "" && email != "" && !strings.EqualFold(root.Email, email) {
+			return nil
+		}
+		if email != "" {
+			var emailCount int64
+			if err := tx.Unscoped().Model(&model.User{}).
+				Where("LOWER(email) = LOWER(?) AND id <> ?", email, root.Id).
+				Count(&emailCount).Error; err != nil {
+				return err
+			}
+			if emailCount != 0 {
+				return nil
+			}
+		}
+
+		updates := map[string]interface{}{"password": ""}
+		if email != "" {
+			updates["email"] = email
+			root.Email = email
+		}
+		if oauthUser.DisplayName != "" {
+			updates["display_name"] = oauthUser.DisplayName
+			root.DisplayName = oauthUser.DisplayName
+		}
+		if err := tx.Model(&root).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := model.CreateUserOAuthBindingWithTx(tx, &model.UserOAuthBinding{
+			UserId:         root.Id,
+			ProviderId:     genericProvider.GetProviderId(),
+			ProviderUserId: oauthUser.ProviderUserID,
+		}); err != nil {
+			return err
+		}
+		root.Password = ""
+		adopted = true
+		return nil
+	})
+	if err != nil || !adopted {
+		return nil, false, err
+	}
+	_ = model.InvalidateUserCache(root.Id)
+	return &root, true, nil
+}
+
 // findOrCreateOAuthUser finds existing user or creates new user
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session) (*model.User, error) {
 	user := &model.User{}
@@ -252,6 +327,12 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				return user, nil
 			}
 		}
+	}
+
+	if root, adopted, err := adoptTrustedRootOAuthUser(provider, oauthUser, desiredRole, managesRole); err != nil {
+		return nil, err
+	} else if adopted {
+		return root, nil
 	}
 
 	// User doesn't exist, create new user if registration is enabled
