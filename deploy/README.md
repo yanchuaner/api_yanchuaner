@@ -46,7 +46,7 @@ Dockerfile 的 Bun 依赖源和网络并发可通过 `BUN_CONFIG_REGISTRY`、`BU
 
 ## 首次初始化顺序
 
-1. 在本机隧道中完成 New API root 初始化。引导脚本会生成 `NEW_API_ROOT_USER_ID` 与 `NEW_API_ROOT_ACCESS_TOKEN` 并仅写入忽略提交的 `deploy/.env`，供关闭密码登录后的重复部署使用。
+1. 在本机隧道中完成 New API root 初始化。引导脚本会生成 `NEW_API_ROOT_USER_ID` 与 `NEW_API_ROOT_ACCESS_TOKEN` 并仅写入忽略提交的 `deploy/.env`，供关闭密码登录后的重复部署使用。首次由主站管理员登录时，系统只在“受信任提供方 slug 为 `yanchuaner`、角色声明为 `admin`、恰有一个活跃且未绑定的 root、邮箱不冲突”四项同时满足时原子复用该 root、清空本地密码并创建 OAuth 绑定；不会按普通邮箱自动合并，也不会生成第二个活跃 root。
 2. 将系统名称设为“燕中 API”并使用极简前端；保持总注册开关开启（主站 OAuth 首次建号需要），但关闭密码登录、密码注册及除“燕中统一身份”外的登录提供商。已认证在校生、校友与教师首期获得 `$1.00 / ¥7.00`，邀请人与受邀人额外额度保持为零。
 3. 在 LiteLLM 添加 OpenAI Platform API Project 与 DeepSeek 官方 API 渠道。
 4. 创建仅允许已批准模型、带总预算和 RPM/TPM 限制的 LiteLLM 虚拟 Key。
@@ -55,6 +55,8 @@ Dockerfile 的 Bun 依赖源和网络并发可通过 `BUN_CONFIG_REGISTRY`、`BU
 7. Open WebUI 共享服务 Token 使用 `OPENWEBUI_SERVICE_QUOTA` 有限总预算。服务 Key 只在创建响应中返回一次；引导脚本会优先验证 `deploy/.env` 中已有 Key，只在 Key 已失效时显式轮换，并把新 Key 原子写回受限配置。它不会尝试从数据库反查明文，也不会在每次重启时重置余额。创建公益额度分组后，使用测试用户完成预扣、结算、失败退款和并发请求对账。
 8. 迁移后核对 `quota_ledger_entries`：每个已有用户至多一条 `opening_balance`，新 OAuth 用户有一条 `grant`；新虚拟 Key 的 `tokens.key` 以 `sha256:` 开头且数据库中不存在创建响应的明文。
 9. 开启 Key 策略前核对 `yan_core_virtual_key_policies` 与修订表，验证模型/来源/预算/有效期、供应商拒绝、RPM/TPM/并发、Redis 故障和策略更新原因。
+
+旧版本若已经产生 root 与主站 OAuth 管理员两个账号，不得直接硬删带额度流水、Token 或日志的记录。先做 PostgreSQL 可恢复备份，把主站 OAuth 绑定迁回 root，核对服务 Token、额度投影和不可变流水后，再把重复账号禁用并软删除；历史流水仍保留原 user ID 作为审计证据。
 
 ## 默认关闭项
 

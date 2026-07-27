@@ -11,7 +11,7 @@
 
 ## 阶段 B：身份
 
-2026-07-21 的 WSL 隔离证据已覆盖主站提供方 45 项 HTTP 合同，包括登录、`access_denied`、精确回调、S256 PKCE、一次性授权码、错误客户端、UserInfo、RS256/JWKS 和 `iss` / `aud` / `nonce`。New API 消费端另用 `scripts/verify-main-site-oauth-callback.ps1` 验证，不得用发现文档检查替代真实回调；Open WebUI 消费端仍需单独验收。
+2026-07-21 的 WSL 隔离证据已覆盖主站提供方 45 项 HTTP 合同，包括登录、`access_denied`、精确回调、S256 PKCE、一次性授权码、错误客户端、UserInfo、RS256/JWKS 和 `iss` / `aud` / `nonce`。New API 消费端另用 `scripts/verify-main-site-oauth-callback.ps1` 验证，不得用发现文档检查替代真实回调。2026-07-27 的公开 HTTPS 预览又确认主站管理员复用现有 New API root，回调返回同一 root ID，登录页无本地密码框；普通成员和停用同步仍须单独验收。
 
 New API 回调脚本默认只接受主站 `http://localhost:3000` 与隔离控制面 `http://localhost:3201`，且必须传入 `-AllowLocalMutation`。它会创建测试用户、OAuth 绑定、初始权益和登录审计，因此只能连接可整体销毁的隔离数据库；验收后销毁对应 Compose project 的卷，不得对共享开发库或生产库运行。
 
