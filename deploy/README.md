@@ -18,6 +18,24 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 
 生产环境由 Nginx 或等价反向代理终止 TLS。不得把 PostgreSQL、Redis 或 LiteLLM 管理端口直接暴露到公网。
 
+## WSL / Linux 服务器
+
+Ubuntu 服务器沿用同一份 `deploy/compose.yaml`，并用仅保存在服务器的 Compose override 固定已验收镜像、资源上限和 `pull_policy: never`。`deploy/.env`、override 中的私有镜像标签及生成过程产生的临时文件都不得提交。启动和复核命令如下：
+
+```bash
+docker network inspect yanchuaner-ai-core >/dev/null
+docker compose --env-file deploy/.env \
+  -f deploy/compose.yaml -f deploy/compose.server.yaml config --quiet
+docker compose --env-file deploy/.env \
+  -f deploy/compose.yaml -f deploy/compose.server.yaml up -d
+docker compose --env-file deploy/.env \
+  -f deploy/compose.yaml -f deploy/compose.server.yaml ps
+```
+
+暑期预览环境的公开边界为：主站身份提供方 `https://staging.yanchuaner.cn`、API 控制面 `https://api.yanchuaner.cn`、AI 交互端 `https://ai.yanchuaner.cn`。公网只开放 Nginx 的 80/443；New API、LiteLLM、Open WebUI、Redis 和两个 PostgreSQL 实例均保持本机回环或 Docker 内网访问。
+
+Dockerfile 的 Bun 依赖源和网络并发可通过 `BUN_CONFIG_REGISTRY`、`BUN_NETWORK_CONCURRENCY` 构建参数调整。构建结束后必须核对镜像内不含 `.env`、数据库、构建缓存或仓库元数据，再把固定标签写入服务器 override。
+
 `deploy/.env` 必须保持 `YANCHUANER_HASHED_KEYS_ENABLED=true` 与 `YANCHUANER_QUOTA_LEDGER_ENABLED=true`。前者只影响新 Key 的创建方式；后者启用已有余额的 opening balance 回填和公益额度流水路径。
 
 阶段 1 的 `YANCHUANER_SUBJECT_GRANTS_ENABLED` 默认保持 `false`。完成数据库迁移、独立 `YANCHUANER_SUBJECT_SIGNING_SECRET` 备份和 AI Web 契约测试后再启用；该 Secret 不得复用 Session、Crypto 或 LiteLLM Master Key。
@@ -34,7 +52,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml ps
 4. 创建仅允许已批准模型、带总预算和 RPM/TPM 限制的 LiteLLM 虚拟 Key。
 5. 在 New API 新建一个自定义渠道，Base URL 使用 `http://litellm-gateway:4000`，Key 使用上一步的虚拟 Key，绝不使用 LiteLLM master key。
 6. 在 New API 配置主站 OAuth，并为 Open WebUI 配置独立 OIDC 客户端：授权、Token、用户信息端点和访问策略见 `docs/yanchuaner/architecture.md`。
-7. Open WebUI 共享服务 Token 使用 `OPENWEBUI_SERVICE_QUOTA` 有限总预算，脚本只会把旧的无限 Token 迁移一次，不会在每次重启时重置余额。创建公益额度分组后，使用测试用户完成预扣、结算、失败退款和并发请求对账。
+7. Open WebUI 共享服务 Token 使用 `OPENWEBUI_SERVICE_QUOTA` 有限总预算。服务 Key 只在创建响应中返回一次；引导脚本会优先验证 `deploy/.env` 中已有 Key，只在 Key 已失效时显式轮换，并把新 Key 原子写回受限配置。它不会尝试从数据库反查明文，也不会在每次重启时重置余额。创建公益额度分组后，使用测试用户完成预扣、结算、失败退款和并发请求对账。
 8. 迁移后核对 `quota_ledger_entries`：每个已有用户至多一条 `opening_balance`，新 OAuth 用户有一条 `grant`；新虚拟 Key 的 `tokens.key` 以 `sha256:` 开头且数据库中不存在创建响应的明文。
 9. 开启 Key 策略前核对 `yan_core_virtual_key_policies` 与修订表，验证模型/来源/预算/有效期、供应商拒绝、RPM/TPM/并发、Redis 故障和策略更新原因。
 
