@@ -32,7 +32,9 @@ docker compose --env-file deploy/.env \
   -f deploy/compose.yaml -f deploy/compose.server.yaml ps
 ```
 
-暑期预览环境的公开边界为：主站身份提供方 `https://staging.yanchuaner.cn`、API 控制面 `https://api.yanchuaner.cn`、AI 交互端 `https://ai.yanchuaner.cn`。公网只开放 Nginx 的 80/443；New API、LiteLLM、Open WebUI、Redis 和两个 PostgreSQL 实例均保持本机回环或 Docker 内网访问。
+暑期预览环境的公开边界为：唯一身份提供方 `https://yanchuaner.cn`、API 控制面 `https://api.yanchuaner.cn`、AI 交互端 `https://ai.yanchuaner.cn`。公网只开放 Nginx 的 80/443；New API、LiteLLM、Open WebUI、Redis 和两个 PostgreSQL 实例均保持本机回环或 Docker 内网访问。`staging.yanchuaner.cn` 在主域切换后已关闭 OAuth/OIDC 签发，不能作为生产身份源或复用生产客户端材料。
+
+截至 2026-08-01，服务器固定部署 `api-yanchuaner/new-api:20260801-e3749a8f`，包含可信主站 root 复用和 OAuth-only 加固；部署前 PostgreSQL 与环境配置已有受限备份。更新镜像时必须继续使用不可变标签，并在重建 New API 前单独备份数据库，不能对现有 Compose project 执行 `down -v`。
 
 Dockerfile 的 Bun 依赖源和网络并发可通过 `BUN_CONFIG_REGISTRY`、`BUN_NETWORK_CONCURRENCY` 构建参数调整。构建结束后必须核对镜像内不含 `.env`、数据库、构建缓存或仓库元数据，再把固定标签写入服务器 override。
 
