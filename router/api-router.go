@@ -258,6 +258,9 @@ func SetApiRouter(router *gin.Engine) {
 			yanCoreRoute.POST("/grants/introspect", middleware.CriticalRateLimit(), controller.IntrospectYanCoreSubjectGrant)
 			yanCoreRoute.GET("/me/ledger", middleware.CriticalRateLimit(), controller.YanCoreMeLedger)
 			yanCoreRoute.POST("/admin/quota", middleware.CriticalRateLimit(), controller.YanCoreAdminQuota)
+			yanCoreRoute.GET("/me/keys", middleware.CriticalRateLimit(), controller.YanCoreTokenList)
+			yanCoreRoute.POST("/me/keys", middleware.CriticalRateLimit(), controller.YanCoreTokenCreate)
+			yanCoreRoute.DELETE("/me/keys/:id", middleware.CriticalRateLimit(), controller.YanCoreTokenDelete)
 			yanCoreUserRoute := yanCoreRoute.Group("/grants")
 			yanCoreUserRoute.Use(middleware.UserAuth())
 			{
