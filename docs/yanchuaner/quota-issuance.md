@@ -46,3 +46,10 @@
 ## 用户侧核对
 
 用户登录 ai-web 后可见公益额度；每次对话显示 request ID 和输入/输出 token 用量，额度随结算实时更新。用户也可通过 `GET /api/yanchuaner/quota-ledger` 查看自己的不可变流水。
+
+## 对账
+
+- `GET /api/yanchuaner/requests/:request_id`：登录用户查询自己某个 request ID 的全部流水（预扣、结算、退款）。
+- `GET /api/yanchuaner/admin/requests/:request_id`：root 查询任意用户的同一 request ID 流水，用于与 DeepSeek 账单核对。
+
+每次模型请求都应看到“预扣 + 结算/退款”成对出现；只出现预扣没有结算或退款的请求即为异常，应优先排查。
