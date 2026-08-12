@@ -36,11 +36,12 @@ $isolatedSecrets = @(
   $values["YANCHUANER_OAUTH_CLIENT_SECRET"],
   $values["YANCHUANER_AI_OAUTH_CLIENT_SECRET"],
   $values["YANCHUANER_AI_WEB_OAUTH_CLIENT_SECRET"],
-  $values["YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET"]
+  $values["YANCHUANER_SUBJECT_EXCHANGE_CLIENT_SECRET"],
+  $values["YANCHUANER_IDENTITY_EVENT_SECRET"]
 )
 if ($isolatedSecrets.Where({ [string]::IsNullOrWhiteSpace($_) -or $_.Length -lt 32 }).Count -gt 0 -or
     ($isolatedSecrets | Select-Object -Unique).Count -ne $isolatedSecrets.Count) {
-  throw "OAuth clients and YanCore subject exchange must use distinct secrets of at least 32 characters."
+  throw "OAuth clients, YanCore subject exchange, and identity event webhook must use distinct secrets of at least 32 characters."
 }
 
 docker compose --env-file $EnvFile -f $composeFile config --quiet

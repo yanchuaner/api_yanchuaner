@@ -275,6 +275,7 @@ func migrateDB() error {
 		&QuotaLedgerEntry{},
 		&YanCoreSubjectGrant{},
 		&YanCoreApplicationSession{},
+		&YanCoreIdentityEvent{},
 		&YanCoreCampaign{},
 		&YanCoreRedeemCode{},
 		&YanCoreEntitlement{},

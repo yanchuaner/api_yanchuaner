@@ -25,7 +25,8 @@ New API 回调脚本默认只接受主站 `http://localhost:3000` 与隔离控�
 | 回调篡改 | 非精确 `redirect_uri` 被拒绝，不发生跳转 |
 | 授权码重放 | 首次换取成功，第二次返回 `invalid_grant` |
 | 错误客户端密钥 | 返回 `invalid_client`，日志不包含密钥、授权码或 Token 正文 |
-| 主站账号停用 | UserInfo 返回 `active=false` 或明确停用状态时，新主体交换立即失败；存量 New API Token 仍依赖本地禁用后的缓存清理，跨站同步 webhook 另行验收 |
+| 主站账号停用 | UserInfo 返回 `active=false` 或明确停用状态时，新主体交换立即失败；主站通过签名身份事件 webhook 推送停用，API 幂等撤销存量 grant、禁用 Token 并清理缓存 |
+| 跨站事件同步 | 事件必须带 HMAC 签名、5 分钟时间窗和唯一 `event_id`；重复投递返回 `already_processed`，未绑定主体也记录事件防止重放；事件处理写入结构化审计 |
 | OIDC 发现 | 宿主机和容器均可读取发现文档，且只声明 RS256 ID Token 签名 |
 | JWKS | 至少发布一个 RSA 公钥，不包含私钥参数 |
 | AI 登录 | Open WebUI 关闭本地注册，仅通过主站 OIDC 为认证校友自动建号 |
