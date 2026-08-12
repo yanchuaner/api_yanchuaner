@@ -39,6 +39,8 @@ var defaultCacheRatio = map[string]float64{
 	"deepseek-chat":                       0.25,
 	"deepseek-reasoner":                   0.25,
 	"deepseek-coder":                      0.25,
+	"deepseek-v4-flash":                   0.02,     // 缓存命中 0.02 元/百万 token
+	"deepseek-v4-pro":                     0.008333, // 缓存命中 0.025 元/百万 token
 	"claude-3-sonnet-20240229":            0.1,
 	"claude-3-opus-20240229":              0.1,
 	"claude-3-haiku-20240307":             0.1,
