@@ -43,6 +43,8 @@
 }
 ```
 
+管理员也可以通过自主 ai-web 的“额度发放”面板操作同一接口；ai-web 不保存 root 凭据，而是用携带管理员声明的 YanCore grant 调用 `POST /api/yancore/admin/quota`。API 会再次核对数据库中的 root 角色与启用状态，grant 过期或撤销后立即失效。
+
 ## 用户侧核对
 
 用户登录 ai-web 后可见公益额度；每次对话显示 request ID 和输入/输出 token 用量，额度随结算实时更新。用户也可通过 `GET /api/yanchuaner/quota-ledger` 查看自己的不可变流水。
