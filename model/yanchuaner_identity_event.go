@@ -113,7 +113,7 @@ func ApplyYanCoreIdentityEvent(providerId int, data YanCoreIdentityEventData) (*
 		result.UserId = user.Id
 		now := time.Now().Unix()
 		switch data.Event {
-		case "account.disabled", "sessions.revoked":
+		case "account.disabled":
 			if user.Status != common.UserStatusDisabled {
 				if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("status", common.UserStatusDisabled).Error; err != nil {
 					return err
@@ -134,6 +134,21 @@ func ApplyYanCoreIdentityEvent(providerId int, data YanCoreIdentityEventData) (*
 				return err
 			}
 			result.GrantsRevoked = grantResult.RowsAffected
+		case "sessions.revoked":
+			grantResult := tx.Model(&YanCoreSubjectGrant{}).
+				Where("user_id = ? AND revoked_at = 0", user.Id).
+				Update("revoked_at", now)
+			if err := grantResult.Error; err != nil {
+				return err
+			}
+			result.GrantsRevoked = grantResult.RowsAffected
+			tokenResult := tx.Model(&Token{}).
+				Where("user_id = ? AND name LIKE ? AND status = ? AND deleted_at IS NULL", user.Id, aiWebSessionTokenNamePrefix+"%", common.TokenStatusEnabled).
+				Update("status", common.TokenStatusDisabled)
+			if err := tokenResult.Error; err != nil {
+				return err
+			}
+			result.TokensDisabled = tokenResult.RowsAffected
 		case "account.enabled":
 			if user.Status != common.UserStatusEnabled {
 				if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("status", common.UserStatusEnabled).Error; err != nil {
