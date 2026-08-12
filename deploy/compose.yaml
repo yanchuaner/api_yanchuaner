@@ -106,7 +106,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: api-yanchuaner/new-api:${NEW_API_IMAGE_TAG:-v1.0.0-rc.21-yc.1}
+    image: api-yanchuaner/new-api:${NEW_API_IMAGE_TAG:-preview}
     restart: unless-stopped
     command: ["--log-dir", "/app/logs"]
     environment:
