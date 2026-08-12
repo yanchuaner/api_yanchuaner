@@ -333,3 +333,21 @@ func GetUserQuotaLedger(userId int, startIdx int, num int) ([]*QuotaLedgerEntry,
 	}
 	return entries, total, nil
 }
+
+// GetQuotaLedgerEntriesByRequestId returns the append-only ledger rows for a
+// request. userId=0 returns all users (admin reconciliation); otherwise only
+// the caller's own rows are visible.
+func GetQuotaLedgerEntriesByRequestId(requestId string, userId int) ([]*QuotaLedgerEntry, error) {
+	if strings.TrimSpace(requestId) == "" || len(requestId) > 64 {
+		return nil, errors.New("request id is invalid")
+	}
+	query := DB.Where("request_id = ?", requestId)
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
+	}
+	var entries []*QuotaLedgerEntry
+	if err := query.Order("id asc").Find(&entries).Error; err != nil {
+		return nil, err
+	}
+	return entries, nil
+}

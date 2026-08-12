@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -226,4 +227,57 @@ func TestQuotaLedgerPostgresMigrationCompatibility(t *testing.T) {
 	var reloaded User
 	require.NoError(t, postgresDB.First(&reloaded, user.Id).Error)
 	assert.Equal(t, 125, reloaded.Quota)
+}
+
+func TestGetQuotaLedgerEntriesByRequestIdScopesUser(t *testing.T) {
+	previousDB := DB
+	previousRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	db, err := gorm.Open(sqlite.Open("file:quota_ledger_request?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() {
+		DB = previousDB
+		common.RedisEnabled = previousRedisEnabled
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&User{}, &QuotaLedgerEntry{}))
+	userA := &User{Username: "request-a", Password: "x", Status: common.UserStatusEnabled, Quota: 1000, AffCode: "request-a-aff"}
+	userB := &User{Username: "request-b", Password: "x", Status: common.UserStatusEnabled, Quota: 0, AffCode: "request-b-aff"}
+	require.NoError(t, db.Create(userA).Error)
+	require.NoError(t, db.Create(userB).Error)
+
+	_, err = ApplyQuotaLedgerChange(QuotaLedgerChange{
+		UserId:         userA.Id,
+		RequestId:      "req-abc",
+		IdempotencyKey: "req-abc:user-a:reserve",
+		EntryType:      QuotaLedgerTypeReserve,
+		FundingSource:  QuotaFundingPublicBenefit,
+		Amount:         -100,
+		Reason:         "reserve",
+	})
+	require.NoError(t, err)
+	_, err = ApplyQuotaLedgerChange(QuotaLedgerChange{
+		UserId:         userA.Id,
+		RequestId:      "req-abc",
+		IdempotencyKey: "req-abc:user-a:settle",
+		EntryType:      QuotaLedgerTypeSettlement,
+		FundingSource:  QuotaFundingPublicBenefit,
+		Amount:         40,
+		Reason:         "settlement",
+	})
+	require.NoError(t, err)
+
+	rowsA, err := GetQuotaLedgerEntriesByRequestId("req-abc", userA.Id)
+	require.NoError(t, err)
+	assert.Len(t, rowsA, 2)
+	rowsB, err := GetQuotaLedgerEntriesByRequestId("req-abc", userB.Id)
+	require.NoError(t, err)
+	assert.Len(t, rowsB, 0)
+	rowsAll, err := GetQuotaLedgerEntriesByRequestId("req-abc", 0)
+	require.NoError(t, err)
+	assert.Len(t, rowsAll, 2)
 }
