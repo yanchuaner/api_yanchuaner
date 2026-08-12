@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -42,6 +43,10 @@ func AdminQuotaAdjust(c *gin.Context) {
 		adminQuotaError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	applyAdminQuota(c, c.GetInt("id"), request)
+}
+
+func applyAdminQuota(c *gin.Context, actorUserId int, request adminQuotaRequest) {
 	request.Action = strings.TrimSpace(strings.ToLower(request.Action))
 	request.Reason = strings.TrimSpace(request.Reason)
 	request.Reference = strings.TrimSpace(request.Reference)
@@ -98,7 +103,7 @@ func AdminQuotaAdjust(c *gin.Context) {
 	})
 	entry, err := model.ApplyQuotaLedgerChange(model.QuotaLedgerChange{
 		UserId:         user.Id,
-		ActorUserId:    c.GetInt("id"),
+		ActorUserId:    actorUserId,
 		RequestId:      c.GetString(common.RequestIdKey),
 		IdempotencyKey: request.IdempotencyKey,
 		EntryType:      entryType,
@@ -126,6 +131,7 @@ func AdminQuotaAdjust(c *gin.Context) {
 	if request.Action == "grant" {
 		auditAction = "user.quota_grant"
 	}
+	c.Set("id", actorUserId)
 	recordManageAuditFor(c, user.Id, auditAction, map[string]interface{}{
 		"quota":         logger.LogQuota(request.Amount),
 		"reason":        request.Reason,
@@ -137,4 +143,34 @@ func AdminQuotaAdjust(c *gin.Context) {
 		"balance_after":   entry.BalanceAfter,
 		"idempotency_key": entry.IdempotencyKey,
 	})
+}
+
+// YanCoreAdminQuota allows the trusted YanCore admin grant to issue quota
+// without storing a root access token in ai-web. The grant must carry the
+// admin claim and the user must still be an enabled root in the database.
+func YanCoreAdminQuota(c *gin.Context) {
+	if !common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_GRANTS_ENABLED", false) {
+		adminQuotaError(c, http.StatusNotFound, "YanCore subject grants are disabled.")
+		return
+	}
+	claims, err := model.ParseSubjectGrantForAudience(bearerValue(c.GetHeader("Authorization")), "yanchuaner-ai")
+	if err != nil || !claims.Admin {
+		adminQuotaError(c, http.StatusForbidden, "admin grant is required")
+		return
+	}
+	userId := 0
+	if strings.HasPrefix(claims.Subject, "yc_user_") {
+		userId, _ = strconv.Atoi(strings.TrimPrefix(claims.Subject, "yc_user_"))
+	}
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil || user.Status != common.UserStatusEnabled || user.Role != common.RoleRootUser {
+		adminQuotaError(c, http.StatusForbidden, "admin account is unavailable")
+		return
+	}
+	var request adminQuotaRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		adminQuotaError(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	applyAdminQuota(c, user.Id, request)
 }

@@ -257,6 +257,7 @@ func SetApiRouter(router *gin.Engine) {
 			yanCoreRoute.POST("/identity-events", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.HandleYanCoreIdentityEvent)
 			yanCoreRoute.POST("/grants/introspect", middleware.CriticalRateLimit(), controller.IntrospectYanCoreSubjectGrant)
 			yanCoreRoute.GET("/me/ledger", middleware.CriticalRateLimit(), controller.YanCoreMeLedger)
+			yanCoreRoute.POST("/admin/quota", middleware.CriticalRateLimit(), controller.YanCoreAdminQuota)
 			yanCoreUserRoute := yanCoreRoute.Group("/grants")
 			yanCoreUserRoute.Use(middleware.UserAuth())
 			{

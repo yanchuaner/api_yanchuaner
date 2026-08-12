@@ -63,6 +63,7 @@ type SubjectGrantClaims struct {
 	Application string `json:"app"`
 	Scopes      string `json:"scp"`
 	GrantType   string `json:"grant_type"`
+	Admin       bool   `json:"adm"`
 	jwt.RegisteredClaims
 }
 
@@ -121,7 +122,7 @@ func IssueSubjectGrant(userID int, application, audience, scopes string, ttl int
 		return "", nil, err
 	}
 	var user User
-	if err := DB.Select("id", "status").First(&user, userID).Error; err != nil || user.Status != common.UserStatusEnabled {
+	if err := DB.Select("id", "status", "role").First(&user, userID).Error; err != nil || user.Status != common.UserStatusEnabled {
 		return "", nil, ErrSubjectGrantRevoked
 	}
 	now := time.Now().Unix()
@@ -142,6 +143,7 @@ func IssueSubjectGrant(userID int, application, audience, scopes string, ttl int
 		Application: application,
 		Scopes:      scopes,
 		GrantType:   SubjectGrantType,
+		Admin:       user.Role == common.RoleRootUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    SubjectGrantIssuer,
 			Subject:   fmt.Sprintf("yc_user_%d", userID),
