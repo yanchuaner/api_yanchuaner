@@ -1,5 +1,7 @@
 # AGENTS.md — Project Conventions for new-api
 
+> 工作区级约定见同级 `../AGENTS.md` 与 `../docs/`。本仓库自主代码采用 AGPL-3.0；分支统一使用 `feat/`、`fix/`、`docs/`、`refactor/`、`chore/`，不使用 `codex/*`。生产改动先备份并说明回滚方式。
+
 DO NOT send optional commentary
 
 ## Overview
