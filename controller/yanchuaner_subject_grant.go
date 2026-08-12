@@ -7,8 +7,10 @@ the GNU Affero General Public License version 3 or later with this repository.
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -103,6 +105,17 @@ func IntrospectYanCoreSubjectGrant(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "YanCore subject grant is invalid."})
 		return
 	}
+	userId := 0
+	if strings.HasPrefix(claims.Subject, "yc_user_") {
+		userId, _ = strconv.Atoi(strings.TrimPrefix(claims.Subject, "yc_user_"))
+	}
+	balance := 0
+	if userId > 0 {
+		balance, err = model.GetWalletFundingBalance(userId)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to load wallet balance for grant subject %d: %s", userId, err.Error()))
+		}
+	}
 	common.ApiSuccess(c, gin.H{
 		"subject":     claims.Subject,
 		"application": claims.Application,
@@ -111,6 +124,10 @@ func IntrospectYanCoreSubjectGrant(c *gin.Context) {
 		"issued_at":   claims.IssuedAt.Unix(),
 		"expires_at":  claims.ExpiresAt.Unix(),
 		"grant_id":    claims.ID,
+		"account": gin.H{
+			"user_id":       userId,
+			"balance_units": balance,
+		},
 	})
 }
 
