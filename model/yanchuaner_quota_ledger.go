@@ -351,3 +351,46 @@ func GetQuotaLedgerEntriesByRequestId(requestId string, userId int) ([]*QuotaLed
 	}
 	return entries, nil
 }
+
+type QuotaLedgerSpendSummary struct {
+	ConsumedUnits      int64 `json:"consumed_units"`
+	IssuedUnits        int64 `json:"issued_units"`
+	ActiveReserveUnits int64 `json:"active_reserve_units"`
+	UserCount          int64 `json:"user_count"`
+}
+
+// GetQuotaLedgerSpendSummary summarizes public-benefit spend in [start, end).
+// Consumption is the net reserve/settlement/refund amount, so failed requests
+// that refund their reserve contribute zero.
+func GetQuotaLedgerSpendSummary(start, end int64) (*QuotaLedgerSpendSummary, error) {
+	if start <= 0 || end <= start {
+		return nil, errors.New("quota ledger time range is invalid")
+	}
+	summary := &QuotaLedgerSpendSummary{}
+	consumeTypes := []string{QuotaLedgerTypeReserve, QuotaLedgerTypeSettlement, QuotaLedgerTypeRefund}
+	funding := []string{QuotaFundingPublicBenefit, QuotaFundingLegacy}
+	var consumed int64
+	err := DB.Model(&QuotaLedgerEntry{}).
+		Where("created_at >= ? AND created_at < ? AND funding_source IN ? AND entry_type IN ?", start, end, funding, consumeTypes).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&consumed).Error
+	if err != nil {
+		return nil, err
+	}
+	summary.ConsumedUnits = -consumed
+	err = DB.Model(&QuotaLedgerEntry{}).
+		Where("created_at >= ? AND created_at < ? AND funding_source = ? AND entry_type = ?", start, end, QuotaFundingPublicBenefit, QuotaLedgerTypeGrant).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&summary.IssuedUnits).Error
+	if err != nil {
+		return nil, err
+	}
+	err = DB.Model(&QuotaLedgerEntry{}).
+		Distinct("user_id").
+		Where("created_at >= ? AND created_at < ? AND funding_source IN ? AND entry_type IN ?", start, end, funding, consumeTypes).
+		Count(&summary.UserCount).Error
+	if err != nil {
+		return nil, err
+	}
+	return summary, nil
+}

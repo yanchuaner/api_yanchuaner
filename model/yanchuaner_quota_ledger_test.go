@@ -281,3 +281,57 @@ func TestGetQuotaLedgerEntriesByRequestIdScopesUser(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rowsAll, 2)
 }
+
+func TestGetQuotaLedgerSpendSummaryCountsOnlyNetConsumption(t *testing.T) {
+	previousDB := DB
+	previousRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	db, err := gorm.Open(sqlite.Open("file:quota_ledger_budget?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() {
+		DB = previousDB
+		common.RedisEnabled = previousRedisEnabled
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&User{}, &QuotaLedgerEntry{}))
+	userA := &User{Username: "budget-a", Password: "x", Status: common.UserStatusEnabled, Quota: 1000, AffCode: "budget-a-aff"}
+	userB := &User{Username: "budget-b", Password: "x", Status: common.UserStatusEnabled, Quota: 1000, AffCode: "budget-b-aff"}
+	require.NoError(t, db.Create(userA).Error)
+	require.NoError(t, db.Create(userB).Error)
+
+	entries := []struct {
+		userID  int
+		key     string
+		typ     string
+		amount  int
+		created int64
+	}{
+		{userA.Id, "budget:grant", QuotaLedgerTypeGrant, 5000, 1000},
+		{userA.Id, "budget:reserve", QuotaLedgerTypeReserve, -100, 2000},
+		{userA.Id, "budget:settle", QuotaLedgerTypeSettlement, 60, 2000},
+		{userB.Id, "budget:refund-reserve", QuotaLedgerTypeReserve, -20, 2000},
+		{userB.Id, "budget:refund", QuotaLedgerTypeRefund, 20, 2000},
+	}
+	for _, item := range entries {
+		entry, err := ApplyQuotaLedgerChange(QuotaLedgerChange{
+			UserId:         item.userID,
+			IdempotencyKey: item.key,
+			EntryType:      item.typ,
+			FundingSource:  QuotaFundingPublicBenefit,
+			Amount:         item.amount,
+			Reason:         "budget test",
+		})
+		require.NoError(t, err)
+		require.NoError(t, DB.Model(&QuotaLedgerEntry{}).Where("id = ?", entry.Id).Update("created_at", item.created).Error)
+	}
+
+	summary, err := GetQuotaLedgerSpendSummary(1, 3000)
+	require.NoError(t, err)
+	assert.EqualValues(t, 40, summary.ConsumedUnits)
+	assert.EqualValues(t, 5000, summary.IssuedUnits)
+	assert.Equal(t, int64(2), summary.UserCount)
+}
