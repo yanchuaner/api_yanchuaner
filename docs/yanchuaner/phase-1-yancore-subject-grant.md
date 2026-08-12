@@ -58,6 +58,10 @@ New API 当前继续承载兼容网关和模型转发，但不拥有 `app`、`au
 - 重启后 grant 仍可验证，轮换 Secret 的行为有明确停机/迁移方案；
 - API、AI、YCZX Code 使用同一契约测试，不复制上游实现。
 
+## 跨站身份事件同步
+
+主站通过 `POST /api/yancore/identity-events` 推送账号停用/恢复、强制退出与角色变化事件。接收端要求 `YANCHUANER_IDENTITY_EVENT_SECRET`（至少 32 字符）与主站 `IDENTITY_EVENT_WEBHOOK_SECRET` 一致；请求体必须携带 `X-Yanchuaner-Signature`（HMAC-SHA256）与 5 分钟内的 `X-Yanchuaner-Event-Time`。`event_id` 幂等：重复投递返回 `already_processed`；账号停用会撤销全部存量 grant、禁用全部 Token 并禁用本地用户，角色变化会同步本地角色并撤销 ai-web 会话 Key。
+
 ## 回滚
 
 先关闭 `YANCHUANER_SUBJECT_EXCHANGE_ENABLED`，AI Web 停止建立新会话；已签发 Key 与 grant 最迟 15 分钟失效，也可按保留的 Token ID 和 grant ID 立即撤销。必要时停止自主 AI Web profile，Open WebUI 只回退为受限服务账户 PoC，不得把共享账户调用解释为个人公益额度。数据库字段和审计记录不删除。
