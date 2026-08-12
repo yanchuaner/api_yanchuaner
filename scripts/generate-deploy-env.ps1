@@ -15,7 +15,7 @@ function New-UrlSafeSecret([int]$ByteCount = 32) {
 }
 
 $content = @"
-NEW_API_IMAGE_TAG=v1.0.0-rc.21-yc.1
+NEW_API_IMAGE_TAG=preview
 NEW_API_HOST_PORT=3101
 NEW_API_PUBLIC_URL=https://api.yanchuaner.cn
 NEW_API_SESSION_COOKIE_SECURE=true
