@@ -50,6 +50,8 @@ Redis 已配置但不可用时限流拒绝请求并返回 503。未配置 Redis 
 1. 保持 `YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED=false` 启动新版本，完成表迁移。启动过程不会自动写入历史回填。
 2. 轮换仍为明文的旧 Key；随后由管理员调用 `GET /api/yancore/virtual-key-policies/rollout/` 盘点哈希 Key，确认模型白名单、有限预算、有效期和来源范围。
 3. 审查预检结果，以小批量明确 Token ID 调用 `POST /api/yancore/virtual-key-policies/rollout/`。空白、通配、未知模型、无有限预算、过期或非启用 Key 只能生成禁用策略，不能批量扩大权限。
+
+当前状态（2026-08-13）：预检与回填接口已随主镜像上线，但 `YANCHUANER_VIRTUAL_KEY_POLICY_ENABLED` 仍为 `false`。启用前必须先在管理端完成一次预检审查，再以明确 Token ID 小批量回填。
 4. 查询管理审计和策略修订；逐个修正禁用项的模型/预算/状态，再通过 YanCore 原子接口启用。
 5. 验证 Redis、403/429/503、预算扣减、失败退款和修订查询后，再对本地集成栈开启开关。
 6. 使用本地 root 访问令牌运行 `scripts/verify-virtual-key-policy.ps1`；脚本必须验证版本从 1 增至 2、修订恰为两条且旧 Token 更新返回 409。

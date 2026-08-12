@@ -53,3 +53,10 @@
 - `GET /api/yanchuaner/admin/requests/:request_id`：root 查询任意用户的同一 request ID 流水，用于与 DeepSeek 账单核对。
 
 每次模型请求都应看到“预扣 + 结算/退款”成对出现；只出现预扣没有结算或退款的请求即为异常，应优先排查。
+
+退款路径由 `service/yanchuaner_wallet_ledger_test.go`、`service/task_billing_test.go` 与 `service/yanchuaner_campaign_funding_test.go` 覆盖：重复退款幂等、任务失败退款、超收差额退款和活动额度退款均不重复入账。故障注入验收在本地隔离库运行，不在生产主站执行。
+
+## 预算与告警
+
+- `GET /api/yanchuaner/admin/budget`：root 查询当日与当月的公益净消费、发放额度、消费人数和当前预算阈值。
+- 通过 `YANCHUANER_DAILY_BUDGET_UNITS` 与 `YANCHUANER_MONTHLY_BUDGET_UNITS` 配置阈值；返回的 `over_daily` / `over_monthly` 供监控或告警脚本使用。
