@@ -247,6 +247,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			yanchuanerRoute.GET("/quota-ledger", controller.GetMyQuotaLedger)
 		}
+		apiRouter.POST("/yanchuaner/admin/quota", middleware.RootAuth(), middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.AdminQuotaAdjust)
 		yanCoreRoute := apiRouter.Group("/yancore")
 		{
 			yanCoreRoute.POST("/subject-exchange", middleware.CriticalRateLimit(), controller.ExchangeYanCoreSubjectGrant)

@@ -23,6 +23,8 @@ var auditContentTemplates = map[string]string{
 	"user.quota_add":        "Increased user quota by ${quota}; reason: ${reason}",
 	"user.quota_subtract":   "Decreased user quota by ${quota}; reason: ${reason}",
 	"user.quota_override":   "Overrode user quota from ${from} to ${to}; reason: ${reason}",
+	"user.quota_grant":      "Granted ${quota} public-benefit quota to user ${target_user_id}; reason: ${reason}; reference: ${reference}",
+	"user.quota_adjust":     "Adjusted ${quota} public-benefit quota for user ${target_user_id}; reason: ${reason}; reference: ${reference}",
 	"user.binding_clear":    "Cleared ${bindingType} binding for user ${username}",
 	"user.2fa_disable":      "Force-disabled two-factor authentication for the user",
 	"user.passkey_register": "Registered a passkey",
