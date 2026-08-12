@@ -11,7 +11,7 @@
 
 ## 阶段 B：身份
 
-2026-07-21 的 WSL 隔离证据已覆盖主站提供方 45 项 HTTP 合同，包括登录、`access_denied`、精确回调、S256 PKCE、一次性授权码、错误客户端、UserInfo、RS256/JWKS 和 `iss` / `aud` / `nonce`。New API 消费端另用 `scripts/verify-main-site-oauth-callback.ps1` 验证，不得用发现文档检查替代真实回调。2026-08-01 主域切换后，公开 HTTPS 回调再次确认主站管理员复用现有 New API root，回调返回同一 root ID，登录页无本地密码框；项目负责人执行的普通成员主域登录也已通过。2026-08-12 在本地隔离 SQLite 实例中完成了跨站身份事件验收：按主站同一签名格式发送 `account.disabled`、`sessions.revoked` 与 `role.changed`，验证了 HMAC/时间窗/`event_id` 幂等、grant 与 Token 撤销、用户禁用及角色同步；禁用后的 ai-web Key 请求返回 401，未受影响的正常 Key 仍通过认证。同日发布到 `api.yanchuaner.cn`（镜像 `5e6fda37`），生产本机以非绑定主体完成签名事件、幂等重放与错误签名冒烟，`yan_core_identity_events` 表已创建。
+2026-07-21 的 WSL 隔离证据已覆盖主站提供方 45 项 HTTP 合同，包括登录、`access_denied`、精确回调、S256 PKCE、一次性授权码、错误客户端、UserInfo、RS256/JWKS 和 `iss` / `aud` / `nonce`。New API 消费端另用 `scripts/verify-main-site-oauth-callback.ps1` 验证，不得用发现文档检查替代真实回调。2026-08-01 主域切换后，公开 HTTPS 回调再次确认主站管理员复用现有 New API root，回调返回同一 root ID，登录页无本地密码框；项目负责人执行的普通成员主域登录也已通过。2026-08-12 在本地隔离 SQLite 实例中完成了跨站身份事件验收：按主站同一签名格式发送 `account.disabled`、`sessions.revoked` 与 `role.changed`，验证了 HMAC/时间窗/`event_id` 幂等、grant 与 Token 撤销、用户禁用及角色同步；禁用后的 ai-web Key 请求返回 401，未受影响的正常 Key 仍通过认证。同日发布到 `api.yanchuaner.cn`（镜像 `5e6fda37`），生产本机以非绑定主体完成签名事件、幂等重放与错误签名冒烟，`yan_core_identity_events` 表已创建。2026-08-12 晚间完成 DeepSeek 数据面收口：LiteLLM 仅保留 `deepseek-v4-flash` / `deepseek-v4-pro` 并接入新上游密钥，New API 配置对应默认定价与渠道模型，开启主体交换；通过 New API 真实对话验证了模型路由、request ID 与 `public_benefit` 额度流水。
 
 New API 回调脚本默认只接受主站 `http://localhost:3000` 与隔离控制面 `http://localhost:3201`，且必须传入 `-AllowLocalMutation`。它会创建测试用户、OAuth 绑定、初始权益和登录审计，因此只能连接可整体销毁的隔离数据库；验收后销毁对应 Compose project 的卷，不得对共享开发库或生产库运行。
 
