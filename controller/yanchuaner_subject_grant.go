@@ -131,6 +131,37 @@ func IntrospectYanCoreSubjectGrant(c *gin.Context) {
 	})
 }
 
+// YanCoreMeLedger returns the subject's own immutable quota ledger without
+// requiring a New API user session; the YanCore grant is the credential.
+func YanCoreMeLedger(c *gin.Context) {
+	if !common.GetEnvOrDefaultBool("YANCHUANER_SUBJECT_GRANTS_ENABLED", false) {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "YanCore subject grants are disabled."})
+		return
+	}
+	claims, err := model.ParseSubjectGrantForAudience(bearerValue(c.GetHeader("Authorization")), "yanchuaner-ai")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "YanCore subject grant is invalid."})
+		return
+	}
+	userId := 0
+	if strings.HasPrefix(claims.Subject, "yc_user_") {
+		userId, _ = strconv.Atoi(strings.TrimPrefix(claims.Subject, "yc_user_"))
+	}
+	if userId <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "YanCore subject grant is invalid."})
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	entries, total, err := model.GetUserQuotaLedger(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(entries)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func bearerValue(value string) string {
 	if len(value) >= 7 && (value[:7] == "Bearer " || value[:7] == "bearer ") {
 		return value[7:]
